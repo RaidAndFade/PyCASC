@@ -25,22 +25,52 @@ def parse_config(c) -> List[Dict[str,str]]:
 def parse_build_config(c):
     data = {}
     for l in c.split("\n"):
-        if l.strip()=="" or l[0]=="#":
+        if l.strip()=="" or l[0]=="#" or len(l.split(" = "))<2:
             continue
         else:
             n,v=l.split(" = ")
             data[n]=v
     return data
 
-def var_int(f:object,l:int):
-    ba=[]
-    for x in range(l):
-        ba.append(int(f.read(1)[0]))
+def hexkey_to_bytes(s:str):
+    b=b''
+    for x in zip(s[0::2], s[1::2]):
+        b+=bytes([int(x[0]+x[1],16)])
+    return b
+def byteskey_to_hex(b:bytes):
+    s=""
+    for x in b:
+        s+=f"{x:02x}"
+    return s
+    
+def var_int(f:object,l:int,le=True):
+    o=f.read(l)
     i=0
-    for x in ba:
-        i=i<<1
-        i+=x
+    if le:
+        i=int.from_bytes(o, byteorder='little', signed=False)
+    else:
+        i=int.from_bytes(o, byteorder='big', signed=False)
     return i
+
+def jenkins_hash(key:bytes):
+    h=0
+    for x in key:
+        h+=ord(x)
+        h=h&0xffffffff
+        h+=h<<10
+        h=h&0xffffffff
+        h^=h>>6
+        h=h&0xffffffff
+    h+=h<<3
+    h=h&0xffffffff
+    h^=h>>11
+    h=h&0xffffffff
+    h+=h<<15
+    h=h&0xffffffff
+    return h
+
+def prefix_hash(s):
+    return f"{s[:2]}/{s[2:4]}/{s}"
 
 # I don't really want to use this, since splitting it into different handlers allows easier 
 #  parsing of each subgroup (since the subgroups are quite similar)
