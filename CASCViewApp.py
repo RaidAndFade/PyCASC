@@ -123,7 +123,7 @@ class SaveFileWidget(QWidget):
         self.resize(300,200)
         items_to_save = {} # dest_path - ckey
         if 'folders' in self.items:
-            
+            pass
 
 class FileTableWidget(QTableWidget):
     pass #a dream that will never happen (drag-drop out)
