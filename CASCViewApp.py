@@ -108,12 +108,13 @@ class HexViewWidget(QWidget):
         self.show()
 
 class SaveFileWidget(QWidget):
-    def __init__(self, items, cascviewapp): 
+    def __init__(self, items, dest, cascviewapp): 
         """
         items is the same format as created in genFileTree, folder:{'folders':{},'files':{}} file:'name'=>result from read.r_idx
         """
         super().__init__()
         self.items = items
+        self.dest = dest
         self.cascviewapp = cascviewapp
 
     def initUI(self):
@@ -140,7 +141,7 @@ class CascViewApp(QMainWindow):
         self.files=[]
         self.filetree=self.genFileTree()
         self.curPath=[]
-        self.openHexWidgets=[]
+        self.openWidgets=[]
 
         self.initUI()
 
