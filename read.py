@@ -1,5 +1,6 @@
 import os
 import struct
+from typing import Union
 from blizzutils import var_int,jenkins_hash,parse_build_config,parse_config,prefix_hash,hexkey_to_bytes,byteskey_to_hex
 from CASCUtils import parse_encoding_file,parse_root_file,r_cascfile,cascfile_size, NAMED_FILE,SNO_FILE,SNO_INDEXED_FILE
 
@@ -21,6 +22,7 @@ def prep_listfile(fp):
     return names
 
 class FileInfo:
+    ekey:int
     data_file:int
     offset:int
     compressed_size:int
@@ -29,7 +31,7 @@ class FileInfo:
     name:str
     
 def r_idx(fp):
-    ents={}
+    ents=[]
     with open(fp,'rb') as f:
         hl,hh,u_0,bi,u_1,ess,eos,eks,afhb,atsm,_,elen,eh=struct.unpack("IIH6BQQII",f.read(0x28))
         esize = ess+eos+eks
@@ -41,7 +43,8 @@ def r_idx(fp):
             e.data_file=eo>>30
             e.offset=eo&0x3fffffff
             e.compressed_size=es
-            ents[ek]=e
+            e.ekey=ek
+            ents.append(e)
     return ents
 
 class CASCReader:
@@ -74,31 +77,25 @@ class CASCReader:
             if x[-4:]==".idx":
                 # i,v=x[:2],x[2:-4]
                 ents=r_idx(self.data_path+x)
-                for ek in ents:
-                    self.file_table[ek]=ents[ek]
+                for e in ents:
+                    self.file_table[e.ekey]=e
 
         print(f"[ETBL] {len(self.file_table)}")
 
         enc_info = self.file_table[int(enc_hash2[:18],16)]
         enc_file = r_cascfile(self.data_path,enc_info.data_file,enc_info.offset)
         # Load the CKEY MAP from the encoding file.
-        self.ckey_map = parse_encoding_file(enc_file) # maps ckey -> ekey
-
-        for x in self.ckey_map:
-            self.ckey_map[x] = int(self.ckey_map[x][:18],16)
+        self.ckey_map = parse_encoding_file(enc_file) # maps ckey(hexstr) -> ekey(int of first 9 bytes)
 
         print(f"[CTBL] {len(self.ckey_map)}")
 
-        root_ekey = self.ckey_map[root_ckey]
-        root_info = self.file_table[root_ekey]
-        root_file = r_cascfile(self.data_path,root_info.data_file,root_info.offset)
-
+        root_file = self.get_file_by_ckey(root_ckey)
         self.file_translate_table = parse_root_file(self.uid,root_file,self) # maps some ID(can be filedataid, path, whatever) -> ckey
         print(f"[FTTBL] {len(self.file_translate_table)}")
 
         self.file_translate_table.append((NAMED_FILE,"_ROOT",root_ckey))
         
-        self.ckey_map[enc_hash1] = int(enc_hash2[:18],16) # map the encoding file's ckey to its own ekey on the ckey-ekey map, since it appears to not be included in the enc-table
+        self.ckey_map[int(enc_hash1,16)] = int(enc_hash2[:18],16) # map the encoding file's ckey to its own ekey on the ckey-ekey map, since it appears to not be included in the enc-table
         self.file_translate_table.append((NAMED_FILE,"_ENCODING",enc_hash1))
         self.file_translate_table.append((NAMED_FILE,"_INSTALL",inst_hash1))
         self.file_translate_table.append((NAMED_FILE,"_DOWNLOAD",download_hash1))
@@ -107,8 +104,9 @@ class CASCReader:
         for x in self.file_translate_table:
             if x[0] is NAMED_FILE:
                 ckey=x[2]
-                if self.ckey_map[ckey] in self.file_table:
-                    self.get_file_info_by_ckey(x[2]).name=x[1]
+                fi = self.get_file_info_by_ckey(ckey)
+                if fi is not None:
+                    fi.name=x[1]
 
     def get_name(self,ckey):
         fi = self.get_file_info_by_ckey(ckey)
@@ -143,7 +141,10 @@ class CASCReader:
             finfo.uncompressed_size, finfo.chunk_count = cascfile_size(self.data_path,finfo.data_file,finfo.offset)
         return finfo.chunk_count
 
-    def get_file_info_by_ckey(self,ckey):
+    def get_file_info_by_ckey(self,ckey: Union[int,str]):
+        """Takes ckey in either int form or hex form"""
+        if isinstance(ckey,str):
+            ckey=int(ckey,16)
         try:
             return self.file_table[self.ckey_map[ckey]]
         except:
