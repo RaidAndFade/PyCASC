@@ -32,14 +32,16 @@ def _parse_ckey_pages(d,ckey_len,ekey_len,ckey_pagesize,ckey_pagecount):
     for i in range(ckey_pagecount):
         d.seek(headerlen + i * ckey_pagesize+a)
         while True:
-            ekcount, = struct.unpack("H",d.read(2))
+            ekcount = struct.unpack("H",d.read(2))[0]
             if ekcount==0:
                 break
             d.seek(4,1)
             # cfsize, = struct.unpack(">i",d.read(4))
-            ckey = byteskey_to_hex(d.read(ckey_len))
+            ckey = int.from_bytes(d.read(ckey_len),byteorder='big')
             # assert ekcount == len(ekeys)
-            ckey_map[ckey]=[byteskey_to_hex(d.read(ekey_len)) for x in range(ekcount)][0]
+            ckey_map[ckey]=int.from_bytes(d.read(ekey_len)[:9],byteorder='big')
+            # [byteskey_to_hex(d.read(ekey_len)) for x in range(ekcount)][0]
+            d.seek(ekey_len*(ekcount-1),1)
     return ckey_map
 
 def _r_casc_dataheader(f):
