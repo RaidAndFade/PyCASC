@@ -33,24 +33,12 @@ def parse_build_config(c):
     return data
 
 def hexkey_to_bytes(s:str):
-    b=b''
-    for x in zip(s[0::2], s[1::2]):
-        b+=bytes([int(x[0]+x[1],16)])
-    return b
+    return bytes.fromhex(s)
 def byteskey_to_hex(b:bytes):
-    s=""
-    for x in b:
-        s+=f"{x:02x}"
-    return s
+    return b.hex()
     
 def var_int(f:object,l:int,le=True):
-    o=f.read(l)
-    i=0
-    if le:
-        i=int.from_bytes(o, byteorder='little', signed=False)
-    else:
-        i=int.from_bytes(o, byteorder='big', signed=False)
-    return i
+    return int.from_bytes(f.read(l), byteorder='little' if le else 'big', signed=False)
 
 def jenkins_hash(key:bytes):
     h=0
