@@ -4,8 +4,9 @@ from PyQt5.QtGui import QFont
 import webbrowser
 
 class HexViewWidget(QWidget):
-    def __init__(self):
+    def __init__(self, cascviewapp):
         super().__init__()
+        self.cascviewapp=cascviewapp
         self.initUI()
         self.rowlen = 0x10
         self.max_hexdump_byte_len = 8192
@@ -48,6 +49,7 @@ class HexViewWidget(QWidget):
 
     def viewFile(self,filename,content,file_type=None):
         self.text_edit.setText("Loading your file... Please wait")
+        self.content = content
 
         self.ext = os.path.splitext(filename)[1][1:]
         if file_type is None:
@@ -64,15 +66,15 @@ class HexViewWidget(QWidget):
 
         if file_type=="txt": # show strings as normal text files
             self.setWindowTitle(f"TextView: Viewing {filename}")
-            self.content = content
             self.showText()
         elif file_type in ["audio","video","media"]: # play the audio/video externally   
             self.setWindowTitle(f"MediaView: Viewing {filename}")
             self.showMedia()
         else: # show binary data in hexview
             self.setWindowTitle(f"HexView: Viewing {filename}")
-            self.content = content
             self.showHexdump()
+
+        self.content=None # do not need anymore.
         # else:
         #     raise Exception("Unsupported datatype passed to viewFile")
 
@@ -94,3 +96,9 @@ class HexViewWidget(QWidget):
         self.layout.addWidget(self.text_edit)
         self.setLayout(self.layout)
         self.show()
+
+    def closeEvent(self, e):
+        self.text_edit=None
+        self.layout=None
+        self.cascviewapp.sub_widget_closed(self)
+        self.hide()
