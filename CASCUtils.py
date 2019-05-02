@@ -20,18 +20,17 @@ def parse_encoding_file(fd):
 
     # print(version,ckey_len,ekey_len,ckey_pagesize,ekey_pagesize,ckey_pagecount,ekey_pagecount,espec_blocksize)
     espec_data = d.seek(espec_blocksize,1)
-    ckey_data = d.read(0x20*ckey_pagecount+ckey_pagesize*ckey_pagecount)
-    ckey_map = _parse_ckey_pages(ckey_data,ckey_len,ekey_len,ckey_pagesize,ckey_pagecount)
+    ckey_map = _parse_ckey_pages(d,ckey_len,ekey_len,ckey_pagesize,ckey_pagecount)
 
     return ckey_map # i could do more here, but this is the only thing i actually need so idgaf.
 
-def _parse_ckey_pages(ckey_data,ckey_len,ekey_len,ckey_pagesize,ckey_pagecount):
-    d=BytesIO(ckey_data)
+def _parse_ckey_pages(d,ckey_len,ekey_len,ckey_pagesize,ckey_pagecount):
+    a=d.tell()
     headerlen=0x20*ckey_pagecount
     # d.seek(0x20*ckey_pagecount,1) # read the index table
     ckey_map = {}
     for i in range(ckey_pagecount):
-        d.seek(headerlen + i * ckey_pagesize)
+        d.seek(headerlen + i * ckey_pagesize+a)
         while True:
             ekcount, = struct.unpack("H",d.read(2))
             if ekcount==0:
@@ -40,7 +39,7 @@ def _parse_ckey_pages(ckey_data,ckey_len,ekey_len,ckey_pagesize,ckey_pagecount):
             # cfsize, = struct.unpack(">i",d.read(4))
             ckey = byteskey_to_hex(d.read(ckey_len))
             # assert ekcount == len(ekeys)
-            ckey_map[ckey]=[byteskey_to_hex(d.read(ekey_len)) for x in range(ekcount)]
+            ckey_map[ckey]=[byteskey_to_hex(d.read(ekey_len)) for x in range(ekcount)][0]
     return ckey_map
 
 def _r_casc_dataheader(f):
@@ -67,17 +66,19 @@ def _r_casc_bltechunk(f,ci):
     else:
         raise Exception(f"Fuck you {etype} encoding")
 
-def cascfile_size(data_path,data_index,offset,size):
+def cascfile_size(data_path,data_index,offset):
     size=0
+    chunkcount=0
     with open(f"{data_path}data.{data_index:03d}","rb") as df:
         df.seek(offset+30) # fuck my ass
         # data_header = _r_casc_dataheader(df)
         blte_header = _r_casc_blteheader(df)
+        chunkcount=len(blte_header[3])
         for c in blte_header[3]: # for each chunk
             size+=c[1]
-    return size
+    return size, chunkcount
 
-def r_cascfile(data_path,data_index,offset,size):
+def r_cascfile(data_path,data_index,offset):
     # datafile = r_data(f"{data_path}data.{data_index:03d}")
     data = b''
     with open(f"{data_path}data.{data_index:03d}","rb") as df:
@@ -144,8 +145,6 @@ def _parse_d3_root(fd,cr):
             continue
         df = BytesIO(dirfile)
         dfmagic = df.read(4)
-        with open(f"d3dirfiles/{name}.dirfile","wb+") as f:
-            f.write(dirfile)
 
         snocount, = struct.unpack("I",df.read(4))
         for _ in range(snocount):
