@@ -1,11 +1,14 @@
 import sys, os
-from PyQt5.QtWidgets import QMainWindow, QApplication, QWidget, QAction, QTableWidget,QTableWidgetItem, QGridLayout, QHeaderView, QAbstractItemView, QTextEdit, QHBoxLayout, QMenu, QFileDialog
+from PyQt5.QtWidgets import QMainWindow, QApplication, QWidget, QProgressBar, QAction, QTableWidget,QTableWidgetItem, QGridLayout, QHeaderView, QAbstractItemView, QTextEdit, QHBoxLayout, QMenu, QFileDialog
 from PyQt5.QtGui import QIcon, QFont, QDrag, QPixmap, QPainter
-from PyQt5.QtCore import pyqtSlot, Qt, QBuffer, QByteArray, QUrl, QMimeData
+from PyQt5.QtCore import pyqtSlot, Qt, QBuffer, QByteArray, QUrl, QMimeData, pyqtSignal
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 from PyQt5.QtMultimediaWidgets import QVideoWidget
 from PyQt5 import QtCore, QtMultimedia
+from CASCUtils import beautify_filesize
 from read import CASCReader
+from widgets.HexViewWidget import HexViewWidget
+from widgets.SaveFileWidget import SaveFileWidget
 import webbrowser
 
 class TableFolderItem(QTableWidgetItem):
@@ -22,109 +25,6 @@ class TableFolderItem(QTableWidgetItem):
             return False
         else:
             return super(TableFolderItem, self).__lt__(other)
-
-class HexViewWidget(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.initUI()
-        self.rowlen = 0x10
-
-    def showMedia(self,external_viewer=False):
-        c=0
-        self.tmp_file=f"tmp/{c}.{self.ext}"
-        if not os.path.exists("tmp"): os.mkdir("tmp")
-        while os.path.exists(self.tmp_file):
-            c+=1
-            self.tmp_file=f"tmp/{c}.{self.ext}"
-        with open(self.tmp_file,"wb+") as f:
-            f.write(self.content)
-        webbrowser.open(os.path.join(os.getcwd(),self.tmp_file))
-        self.close()
-
-    def showText(self):
-        self.text_edit.setText(self.content.decode("utf-8"))
-        self.text_edit.show()
-
-    def showHexdump(self):
-        t = ""
-
-        hexstrlen = self.rowlen*3
-        charstrlen = self.rowlen
-
-        for x in range(0,len(self.content)//self.rowlen,self.rowlen):
-            section = self.content[x:x+self.rowlen]
-            hexstr = " ".join([f"{y:02x}" for y in section])
-            charstr = "".join([chr(y) if 0x20 <= y <= 0x7E else "." for y in section])
-            t+=f"{x:06x} {hexstr.ljust(hexstrlen)} {charstr.ljust(charstrlen)}\n"
-
-        self.text_edit.setText(t)
-        self.text_edit.show()
-
-    def viewFile(self,filename,content,file_type=None):
-        self.text_edit.setText("Loading your file... Please wait")
-        self.content = content
-
-        self.ext = os.path.splitext(filename)[1][1:]
-        if file_type is None:
-            excemptedChars = [0xd,0xa,0x9]
-            import filetype
-            g = filetype.guess(content[:4096])
-            if g is not None and g.mime.split("/")[0] in ['video','audio']:
-                file_type=g.mime.split("/")[0]
-                self.ext=g.extension
-            elif (g is None or g.mime.split("/")[0] not in ['application']) and sum([0x20 <= x <= 0x7E or x in excemptedChars for x in content])==len(content):
-                file_type="txt"
-        self.type = file_type
-
-        if file_type=="txt": # show strings as normal text files
-            self.setWindowTitle(f"TextView: Viewing {filename}")
-            self.showText()
-        elif file_type in ["audio","video","media"]: # play the audio/video externally   
-            self.setWindowTitle(f"MediaView: Viewing {filename}")
-            self.showMedia()
-        else: # show binary data in hexview
-            self.setWindowTitle(f"HexView: Viewing {filename}")
-            self.showHexdump()
-        # else:
-        #     raise Exception("Unsupported datatype passed to viewFile")
-
-    def initUI(self):
-        self.setWindowTitle("FileView: Empty")
-        self.setMinimumWidth(625)
-        self.setMinimumHeight(200)
-        self.resize(625,300)
-
-        self.text_edit = QTextEdit(self)
-        self.text_edit.setText("Close this window if you see this text.")
-        self.text_edit.setFont(QFont("Courier New",10))
-        self.text_edit.setReadOnly(True)
-        self.text_edit.hide()
-
-        self.tmp_file = None
-
-        self.layout = QHBoxLayout()
-        self.layout.addWidget(self.text_edit)
-        self.setLayout(self.layout)
-        self.show()
-
-class SaveFileWidget(QWidget):
-    def __init__(self, items, dest, cascviewapp): 
-        """
-        items is the same format as created in genFileTree, folder:{'folders':{},'files':{}} file:'name'=>result from read.r_idx
-        """
-        super().__init__()
-        self.items = items
-        self.dest = dest
-        self.cascviewapp = cascviewapp
-
-    def initUI(self):
-        self.setWindowTitle("File Exporter")
-        self.setMinimumWidth(300)
-        self.setMinimumHeight(100)
-        self.resize(300,200)
-        items_to_save = {} # dest_path - ckey
-        if 'folders' in self.items:
-            pass
 
 class FileTableWidget(QTableWidget):
     pass #a dream that will never happen (drag-drop out)
@@ -155,7 +55,7 @@ class CascViewApp(QMainWindow):
     def genFileTree(self):
         ftree = {'folders':{},'files':{}}
         for f in self.files:
-            path = f[0].split("/")
+            path = f[0].replace("\\","/").split("/")
             toptree = ftree
             for sp in path[:-1]:
                 if sp not in toptree['folders']:
@@ -244,7 +144,7 @@ class CascViewApp(QMainWindow):
 
         self.infoTable.insertRow(0) # Name
         self.infoTable.setItem(0, 0, QTableWidgetItem(""))
-        self.infoTable.insertRow(1) # 
+        self.infoTable.insertRow(1) # size
         self.infoTable.setItem(1, 0, QTableWidgetItem(""))
         # self.infoTable.insertRow(2)
         # self.infoTable.setItem(2, 0, QTableWidgetItem(""))
@@ -259,34 +159,41 @@ class CascViewApp(QMainWindow):
         self.fileTable.cellClicked.connect(self.on_click)
         self.fileTable.cellDoubleClicked.connect(self.on_dbl_click)
 
-    def beautify_filesize(self, i):
-        t,c=["","K","M","G","T"],0
-        while i>1024:i//=1024;c+=1
-        return str(i)+t[c]+"B"
-
     def on_right_click(self, QPos=None):
         print("!")
         parent=self.sender()
         pPos=parent.mapToGlobal(QtCore.QPoint(0, 0))
         mPos=pPos+QPos
         self.rcMenu=QMenu(self)
-        sitems=self.fileTable.selectedItems()
+        sitems=[x for x in self.fileTable.selectedItems() if not x.is_back_button]
         if len(sitems)>1:
-            self.rcMenu.addAction('Save files').triggered.connect(lambda:self.save_items(sitems))
+            self.rcMenu.addAction('Export files').triggered.connect(lambda:self.save_items(sitems))
         else:
             item=self.fileTable.itemAt(QPos)
             if item.is_folder:
                 self.rcMenu.addAction("Open Folder").triggered.connect(lambda:self.on_dbl_click(item.row(),item.column()))
+                self.rcMenu.addAction('Export folder').triggered.connect(lambda:self.save_items([item]))
             else:
                 self.rcMenu.addAction('View File (Autodetect)').triggered.connect(lambda:self.show_hexview_for_ckey(item.text(),item.file_data[1]))
                 self.rcMenu.addAction('View Hexdump').triggered.connect(lambda:self.show_hexview_for_ckey(item.text(),item.file_data[1],"hex"))
-                self.rcMenu.addAction('Save file').triggered.connect(lambda:self.save_items(item))
+                self.rcMenu.addAction('Export file').triggered.connect(lambda:self.save_items([item]))
                 self.rcMenu.addAction('Open file outside').triggered.connect(lambda:self.show_hexview_for_ckey(item.text(),item.file_data[1],"media"))
         self.rcMenu.move(mPos)
         self.rcMenu.show()
 
     def save_items(self,items,dest=None):
-        w = SaveFileWidget(items,dest,self)
+        curDir = self.filetree
+        for x in self.curPath:
+            curDir = curDir['folders'][x]
+        folder={'folders':{},'files':{}}
+        for x in items:
+            n=x.text()
+            if x.is_folder:
+                if x.is_back_button: continue
+                folder['folders'][n[1:]]=curDir['folders'][n[1:]]
+            else:
+                folder['files'][n]=curDir['files'][n]
+        w = SaveFileWidget(folder,dest,self)
         self.openWidgets.append(w)
 
     def save_file_tree(self,folder,dest):
@@ -297,7 +204,7 @@ class CascViewApp(QMainWindow):
         if not item.is_folder:
             file_info = self.CASCReader.get_file_info_by_ckey(item.file_data[1]) 
             self.infoTable.item(0,0).setText("File: "+item.text())
-            self.infoTable.item(1,0).setText(f"Size: {self.beautify_filesize(file_info['size'])}")
+            self.infoTable.item(1,0).setText(f"Size: {beautify_filesize(file_info['size'])}")
             # self.infoTable.item(3,0).setText(item.text())
         else:
             if item.is_back_button: 
@@ -322,14 +229,6 @@ class CascViewApp(QMainWindow):
         else:
             self.show_hexview_for_ckey(item.text(),item.file_data[1])
 
-    def save_by_ckey(self, fname, ckey, dest=None):
-        data = self.CASCReader.get_file_by_ckey(ckey)
-        name = dest or QFileDialog.getSaveFileName(self, f"Save {fname} as...",os.path.join(os.getcwd(),fname))[0]
-        if name == '': 
-            return
-        with open(name,'wb+') as f:
-            f.write(data)
-
     def show_hexview_for_ckey(self,fname,ckey,force_type=None):
         data = self.CASCReader.get_file_by_ckey(ckey)
         w = HexViewWidget()
@@ -340,12 +239,14 @@ class CascViewApp(QMainWindow):
         for h in self.openWidgets:
             if isinstance(h, HexViewWidget) and h.tmp_file is not None:
                 os.unlink(h.tmp_file)
-            h = None
+            h.closeEvent(None)
+        self.openWidgets=None
         if os.path.exists("tmp") and len(os.listdir("tmp"))==0:
             os.rmdir("tmp")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     ex = CascViewApp()
-    ex.load_casc_dir("G:/Misc Games/Warcraft III")
-    sys.exit(app.exec_())  
+    # ex.load_casc_dir("G:/Misc Games/Warcraft III")
+    ex.load_casc_dir("G:/Misc Games/Diablo III") 
+    sys.exit(app.exec_())   
