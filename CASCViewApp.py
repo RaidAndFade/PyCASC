@@ -158,9 +158,14 @@ class CascViewApp(QMainWindow):
         self.fileTable.customContextMenuRequested.connect(self.on_right_click)
         self.fileTable.cellClicked.connect(self.on_click)
         self.fileTable.cellDoubleClicked.connect(self.on_dbl_click)
+        self.fileTable.itemSelectionChanged.connect(self.on_change)
+    
+    def keyReleaseEvent(self, e):
+        QMainWindow.keyReleaseEvent(self, e)
+        if e.key()==Qt.Key_Enter or e.key()==Qt.Key_Return:
+            self.on_dbl_click(-1,-1)
 
     def on_right_click(self, QPos=None):
-        print("!")
         parent=self.sender()
         pPos=parent.mapToGlobal(QtCore.QPoint(0, 0))
         mPos=pPos+QPos
@@ -195,16 +200,21 @@ class CascViewApp(QMainWindow):
                 folder['files'][n]=curDir['files'][n]
         w = SaveFileWidget(folder,dest,self)
         self.openWidgets.append(w)
-
-    def save_file_tree(self,folder,dest):
-        pass
         
+    #reverse onchange and onclick so that i dont need to pass bullshit arguments lol
+    def on_change(self):
+        self.on_click(-1,-1)
+
     def on_click(self, row, column):
-        item = self.fileTable.item(row,column)
+        item = self.fileTable.selectedItems()
+        if len(item)<1:
+            return
+        item=item[0]
         if not item.is_folder:
-            file_info = self.CASCReader.get_file_info_by_ckey(item.file_data[1]) 
+            size = self.CASCReader.get_file_size_by_ckey(item.file_data[1])
+            chunk_count = self.CASCReader.get_chunk_count_by_ckey(item.file_data[1])
             self.infoTable.item(0,0).setText("File: "+item.text())
-            self.infoTable.item(1,0).setText(f"Size: {beautify_filesize(file_info['size'])}")
+            self.infoTable.item(1,0).setText(f"Size: {beautify_filesize(size)} ({chunk_count} chunk(s))")
             # self.infoTable.item(3,0).setText(item.text())
         else:
             if item.is_back_button: 
@@ -219,7 +229,10 @@ class CascViewApp(QMainWindow):
 
     def on_dbl_click(self, row, column):
         #enter directory, do nothing if it's a file
-        item = self.fileTable.item(row,column)
+        item = self.fileTable.selectedItems()
+        if len(item)<1:
+            return
+        item = item[0]
         if item.is_folder:
             if item.is_back_button:
                 self.curPath.pop()
@@ -231,9 +244,14 @@ class CascViewApp(QMainWindow):
 
     def show_hexview_for_ckey(self,fname,ckey,force_type=None):
         data = self.CASCReader.get_file_by_ckey(ckey)
-        w = HexViewWidget()
+        w = HexViewWidget(self)
         w.viewFile(fname,data,force_type)
+
         self.openWidgets.append(w)
+
+    def sub_widget_closed(self, w):
+        if w in self.openWidgets:
+            self.openWidgets.remove(w)
 
     def closeEvent(self, e):
         for h in self.openWidgets:
