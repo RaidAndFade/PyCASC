@@ -47,6 +47,7 @@ def _parse_ckey_pages(d,ckey_len,ekey_len,ckey_pagesize,ckey_pagecount):
 def _r_casc_dataheader(f):
     blth,sz,f_0,f_1,chkA,chkB=struct.unpack("16sI2b4s4s",f.read(30))
     return blth,sz,f_0,f_1,chkA,chkB
+
 def _r_casc_blteheader(f):
     assert f.read(4) == b"BLTE"
     sz,flg,cc=struct.unpack("IB3s",f.read(8))
