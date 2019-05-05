@@ -41,7 +41,7 @@ def r_idx(fp):
             es=var_int(f,ess)
             e=FileInfo()
             e.data_file=eo>>30
-            e.offset=eo&0x3fffffff
+            e.offset=eo&(2**30-1)
             e.compressed_size=es
             e.ekey=ek
             ents.append(e)
@@ -78,7 +78,8 @@ class CASCReader:
                 # i,v=x[:2],x[2:-4]
                 ents=r_idx(self.data_path+x)
                 for e in ents:
-                    self.file_table[e.ekey]=e
+                    if e.ekey not in self.file_table: # since apparently duplicates exist and are wrong.... YAY!
+                        self.file_table[e.ekey]=e
 
         print(f"[ETBL] {len(self.file_table)}")
 
@@ -165,11 +166,11 @@ if __name__ == '__main__':
 
     # On my pc, these are some paths:
     # cr = CASCReader("G:/Misc Games/Warcraft III") # War 3
-    cr = CASCReader("G:/Misc Games/Diablo III") # Diablo 3
-    print(f"{len(cr.list_files())} named files loaded in list")
+    # cr = CASCReader("G:/Misc Games/Diablo III") # Diablo 3
     # On my mac, these are the paths:
-    # r("/Users/sepehr/Diablo III") #Diablo 3
-    # r("/Applications/Warcraft III") #War3
+    cr = CASCReader("/Users/sepehr/Diablo III") #Diablo 3
+    # cr = CASCReader("/Applications/Warcraft III") # War 3
+    print(f"{len(cr.list_files())} named files loaded in list")
 
     pr.disable()
     s = io.StringIO()
