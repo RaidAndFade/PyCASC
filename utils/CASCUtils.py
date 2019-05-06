@@ -181,7 +181,7 @@ def _parse_d3_root(fd,cr):
     sno_table = _parse_d3_coretoc(cr.get_file_by_ckey(coretoc_ckey)) # snid : (name,sngrp,grpnm,grpext)
 
     packages_ckey = [c for c in final_entries if c[1]=="Data_D3\\PC\\Misc\\Packages.dat"][0][2]
-    pkg_table = _parse_d3_packages(cr.get_file_by_ckey(packages_ckey))
+    pkg_table = _parse_d3_packages(cr.get_file_by_ckey(packages_ckey)) # fn : (fpath,fname,fext)
 
     for sf in sno_entries:
         if sf[0]==SNO_FILE:
@@ -191,12 +191,12 @@ def _parse_d3_root(fd,cr):
             else: # otherwise, we dont know the name.
                 final_entries.append((SNO_FILE,sf[1],sf[2]))
         else: # sf is SNO_INDEXED_FILE
-            pass
-            # if sf[1][0] in sno_table: # if this file is in the sno_table, then we know it's name
-            #     sfn = sno_table[sf[1][0]]
-            #     final_entries.append((NAMED_FILE,f"{sfn[2]}/{sfn[0]}.{sfn[3]}",sf[2]))
-            # else: # otherwise, we dont know the name.
-            #     final_entries.append((SNO_FILE,sf[1],sf[2]))
+            if sf[1][0] in sno_table: # if this file is in the sno_table, then we know it's name
+                sfn = sno_table[sf[1][0]]
+                pkg = pkg_table[sfn[0]]
+                final_entries.append((NAMED_FILE,f"{sfn[2]}/{pkg[1]}/{sf[1][1]:05d}{pkg[-1]}",sf[2]))
+            else: # otherwise, we dont know the name.
+                final_entries.append((SNO_INDEXED_FILE,sf[1],sf[2]))
 
     return final_entries
 
