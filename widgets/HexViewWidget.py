@@ -41,15 +41,16 @@ class HexViewWidget(QWidget):
             charstr = "".join([chr(y) if 0x20 <= y <= 0x7E else "." for y in section])
             t+=f"{x:06x} {hexstr.ljust(hexstrlen)} {charstr.ljust(charstrlen)}\n"
 
-        if numbytestoprint < len(self.content):
-            t+=f"... ({len(self.content)-numbytestoprint} bytes truncated) ..."
+        if numbytestoprint < self.file_size:
+            t+=f"... ({self.file_size-numbytestoprint} bytes truncated) ..."
 
         self.text_edit.setText(t)
         self.text_edit.show()
 
-    def viewFile(self,filename,content,file_type=None):
+    def viewFile(self,filename,content,file_size,file_type=None):
         self.text_edit.setText("Loading your file... Please wait")
         self.content = content
+        self.file_size=file_size
 
         self.ext = os.path.splitext(filename)[1][1:]
         if file_type is None:
@@ -101,4 +102,3 @@ class HexViewWidget(QWidget):
         self.text_edit=None
         self.layout=None
         self.cascviewapp.sub_widget_closed(self)
-        self.hide()
