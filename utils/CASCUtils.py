@@ -109,7 +109,7 @@ def r_cascfile(data_path,data_index,offset,max_size=-1):
 def read_cstr(f):
     s=b''
     c=f.read(1)
-    while c != 0:
+    while c != b'\0':
         s+=c
         c=f.read(1)
     return s.decode("utf-8")
@@ -192,6 +192,11 @@ def _parse_d3_root(fd,cr):
                 final_entries.append((SNO_FILE,sf[1],sf[2]))
         else: # sf is SNO_INDEXED_FILE
             pass
+            # if sf[1][0] in sno_table: # if this file is in the sno_table, then we know it's name
+            #     sfn = sno_table[sf[1][0]]
+            #     final_entries.append((NAMED_FILE,f"{sfn[2]}/{sfn[0]}.{sfn[3]}",sf[2]))
+            # else: # otherwise, we dont know the name.
+            #     final_entries.append((SNO_FILE,sf[1],sf[2]))
 
     return final_entries
 
