@@ -5,7 +5,7 @@ from PyQt5.QtCore import pyqtSlot, Qt, QBuffer, QByteArray, QUrl, QMimeData, pyq
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 from PyQt5.QtMultimediaWidgets import QVideoWidget
 from PyQt5 import QtCore, QtMultimedia
-from CASCUtils import beautify_filesize
+from utils.CASCUtils import beautify_filesize
 from read import CASCReader
 from widgets.HexViewWidget import HexViewWidget
 from widgets.SaveFileWidget import SaveFileWidget
@@ -20,8 +20,12 @@ class TableFolderItem(QTableWidgetItem):
 
     def __lt__(self, other):
         if self.is_back_button:
-            return True # straight out my ass
+            return True 
         elif other.is_back_button:
+            return False
+        elif self.is_folder and not other.is_folder:
+            return True
+        elif other.is_folder and not self.is_folder:
             return False
         else:
             return super(TableFolderItem, self).__lt__(other)
@@ -80,16 +84,16 @@ class CascViewApp(QMainWindow):
         self.main_widget.setLayout(self.layout)
         self.setCentralWidget(self.main_widget)
 
-        # extractAction = QAction("&", self)
-        # extractAction.setShortcut("Ctrl+Q")
-        # extractAction.setStatusTip('Leave The App')
+        extractAction = QAction("&", self)
+        extractAction.setShortcut("Ctrl+Q")
+        extractAction.setStatusTip('Leave The App')
         # extractAction.triggered.connect(self.close_application)
 
-        self.statusBar()
+        # self.statusBar()
 
         mainMenu = self.menuBar()
         fileMenu = mainMenu.addMenu('&File')
-        # fileMenu.addAction(extractAction)
+        fileMenu.addAction(extractAction)
 
         # Show widget
         self.show()
@@ -120,6 +124,9 @@ class CascViewApp(QMainWindow):
     def createTables(self):
         # Create tables
         self.fileTable = FileTableWidget()
+        # print(self.fileTable.styleSheet())
+        # self.fileTable.setStyleSheet("border:0px")
+        self.fileTable.setShowGrid(False)
         self.fileTable.setColumnCount(1)
         self.fileTable.verticalHeader().hide()
         self.fileTable.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -141,6 +148,7 @@ class CascViewApp(QMainWindow):
         header.hide()
 
         self.infoTable.verticalHeader().hide()
+        self.infoTable.setShowGrid(False)
 
         self.infoTable.insertRow(0) # Name
         self.infoTable.setItem(0, 0, QTableWidgetItem(""))
@@ -179,10 +187,10 @@ class CascViewApp(QMainWindow):
                 self.rcMenu.addAction("Open Folder").triggered.connect(lambda:self.on_dbl_click(item.row(),item.column()))
                 self.rcMenu.addAction('Export folder').triggered.connect(lambda:self.save_items([item]))
             else:
-                self.rcMenu.addAction('View File (Autodetect)').triggered.connect(lambda:self.show_hexview_for_ckey(item.text(),item.file_data[1]))
-                self.rcMenu.addAction('View Hexdump').triggered.connect(lambda:self.show_hexview_for_ckey(item.text(),item.file_data[1],"hex"))
+                self.rcMenu.addAction('View File (Autodetect)').triggered.connect(lambda:self.show_hexview_for_item(item))
+                self.rcMenu.addAction('View Hexdump').triggered.connect(lambda:self.show_hexview_for_item(item,"hex"))
                 self.rcMenu.addAction('Export file').triggered.connect(lambda:self.save_items([item]))
-                self.rcMenu.addAction('Open file outside').triggered.connect(lambda:self.show_hexview_for_ckey(item.text(),item.file_data[1],"media"))
+                self.rcMenu.addAction('Open file outside').triggered.connect(lambda:self.show_hexview_for_item(item,"media"))
         self.rcMenu.move(mPos)
         self.rcMenu.show()
 
@@ -240,18 +248,21 @@ class CascViewApp(QMainWindow):
                 self.curPath.append(item.text()[1:])
             self.populateTable()
         else:
-            self.show_hexview_for_ckey(item.text(),item.file_data[1])
+            self.show_hexview_for_item(item)
 
-    def show_hexview_for_ckey(self,fname,ckey,force_type=None):
-        data = self.CASCReader.get_file_by_ckey(ckey)
+    def show_hexview_for_item(self,item,force_type=None):
+        ckey = item.file_data[1]
+        size = self.CASCReader.get_file_size_by_ckey(ckey)
+        data = self.CASCReader.get_file_by_ckey(ckey,8*1024) # load 8k
+        
         w = HexViewWidget(self)
-        w.viewFile(fname,data,force_type)
-
+        w.viewFile(item.text(),data,size,force_type)
         self.openWidgets.append(w)
 
-    def sub_widget_closed(self, w):
+    def sub_widget_closed(self,w):
         if w in self.openWidgets:
             self.openWidgets.remove(w)
+        w.deleteLater()
 
     def closeEvent(self, e):
         for h in self.openWidgets:
@@ -266,5 +277,8 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     ex = CascViewApp()
     # ex.load_casc_dir("G:/Misc Games/Warcraft III")
-    ex.load_casc_dir("G:/Misc Games/Diablo III") 
+    # ex.load_casc_dir("G:/Misc Games/Diablo III") 
+
+    ex.load_casc_dir("/Users/sepehr/Diablo III") #Diablo 3
+    # ex.load_casc_dir("/Applications/Warcraft III") #War3
     sys.exit(app.exec_())   
