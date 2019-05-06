@@ -1,5 +1,7 @@
 from io import BytesIO
 import struct
+import pathlib
+from utils.CASCUtils import read_cstr
 
 SNOGroups={
     # id : ( name , ext )
@@ -73,29 +75,47 @@ SNOGroups={
     69:("DungeonFinder","")
 }
 
-class SNOInfo:
-    grpId:int
-    name:str
-    ext:str
-    def __init__(self,g,n,e):
-        self.grpId=g;self.name=n;self.ext=e
-
 def _parse_d3_coretoc(ctfd):
     cf = BytesIO(ctfd)
-    group_count = len(SNOGroups)
-    print(group_count)
-    group_lens = struct.unpack("I"*group_count,cf.read(group_count*4))
-    group_offsets = struct.unpack("I"*group_count,cf.read(group_count*4))
-    group_unk_counts = struct.unpack("I"*group_count,cf.read(group_count*4))
+    group_count = 70 # len(SNOGroups) Yeah i dont fucking know why there's 3 groups
+    group_lens = [int.from_bytes(cf.read(4), byteorder='little') for x in range(group_count)]
+    group_offsets = [int.from_bytes(cf.read(4), byteorder='little') for x in range(group_count)]
+    group_unk_counts = [int.from_bytes(cf.read(4), byteorder='little') for x in range(group_count)]
+
+    snomap = {}
 
     cf.seek(4,1)
-    for x in range(group_count):
-        if group_lens[x] <= 0: 
+    for gri in range(group_count):
+        grln=group_lens[gri]
+        if grln <= 0: 
             continue
-        cf.seek(group_offsets[x])
-        for y in range(group_lens[x]):
-            snoGrp, snoId, name_offset = struct.unpack("III",cf.read(12))
-            print(snoGrp, snoId)
+        gr_offset=group_offsets[gri] + 12*group_count+4 # offset + header
+        cf.seek(gr_offset)
+        for _ in range(grln):
+            grpId, snoId, name_offset = struct.unpack("III",cf.read(12))
+            noffset = gr_offset + 12*grln + name_offset # offset+header + group
+            
+            op=cf.tell()
+            cf.seek(noffset)
+            name = read_cstr(cf)
+            cf.seek(op)
+
+            snomap[snoId] = (name,grpId)+SNOGroups[grpId]
 
     # snoid : snoinfo
-    return {}
+    return snomap
+
+def _parse_d3_packages(pkfd):
+    pf = BytesIO(pkfd)
+    sig,numnames = struct.unpack("II",pf.read(8))
+    assert sig == 0xAABB0002
+    name_arr = {}
+    for _ in range(numnames):
+        p=read_cstr(pf).replace("\\","/")
+        p=pathlib.PurePath(p)
+        # if p.stem in name_arr:
+        #     continue
+
+        name_arr[p.stem]=p.parts[:-1]+(p.stem,p.suffix)
+    print(f"Finished reading {len(name_arr)}/{numnames} names at {pf.tell()}")
+    return name_arr

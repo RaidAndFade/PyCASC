@@ -1,6 +1,6 @@
 import struct
 from io import BytesIO
-from blizzutils import byteskey_to_hex
+from utils.blizzutils import byteskey_to_hex
 
 def beautify_filesize(i):
     t,c=["","K","M","G","T"],0
@@ -81,27 +81,38 @@ def cascfile_size(data_path,data_index,offset):
             size+=c[1]
     return size, chunkcount
 
-def r_cascfile(data_path,data_index,offset):
+def r_cascfile(data_path,data_index,offset,max_size=-1):
+    """ Reads a given cascfile, reading as many chunks as needed to get *at least* max_size bytes."""
     # datafile = r_data(f"{data_path}data.{data_index:03d}")
-    data = b''
+    data = BytesIO()
     with open(f"{data_path}data.{data_index:03d}","rb") as df:
         df.seek(offset)
-        data_header = _r_casc_dataheader(df)
+        # data_header = _r_casc_dataheader(df)
+        df.seek(30,1)
         blte_header = _r_casc_blteheader(df)
+        ds = 0
         for c in blte_header[3]: # for each chunk
             chunk_data = _r_casc_bltechunk(df,c)
-            data += chunk_data
-    return data
+            data.write(chunk_data)
+            ds += c[1]
+            if max_size>0 and ds>max_size:
+                break
+    return data.getbuffer()
 
+# import functools
+# import itertools
+
+# def readcstr(f):
+#     toeof = iter(functools.partial(f.read, 1), '')
+#     return ''.join(itertools.takewhile('\0'.__ne__, toeof))
 
 def read_cstr(f):
     s=b''
-    while True:
+    c=f.read(1)
+    while c != 0:
+        s+=c
         c=f.read(1)
-        if c == b'\x00':
-            break
-        s += c
-    return str(s,"utf-8")
+    return s.decode("utf-8")
 
 #ROOT FILES === THIS SECTION WILL BE LARGE.
 SNO_FILE=0
@@ -117,24 +128,21 @@ def _parse_plaintext_root(fd):
 
 def _parse_d3_root_entry(df,t):
     ckey = byteskey_to_hex(df.read(16))
-    i=""
-    fi=0
     if t is SNO_FILE or t is SNO_INDEXED_FILE:
-        snoid=str(struct.unpack("I",df.read(4)))
+        snoid,=struct.unpack("I",df.read(4))
         if t is SNO_INDEXED_FILE:
-            findex=str(struct.unpack("I",df.read(4)))
+            findex,=struct.unpack("I",df.read(4))
             return t,(snoid,findex),ckey
         else:
             return t,snoid,ckey
     elif t is NAMED_FILE:
         return t,read_cstr(df),ckey
 
-
 def _parse_d3_root(fd,cr):
     f = BytesIO(fd)
     sig = f.read(4)
     count, = struct.unpack("I",f.read(4))
-    named_entries = []
+    final_entries = []
     sno_entries = []
     dirs = []
     for _ in range(count):
@@ -162,21 +170,35 @@ def _parse_d3_root(fd,cr):
         namecount, = struct.unpack("I",df.read(4))
         for _ in range(namecount):
             e = _parse_d3_root_entry(df,NAMED_FILE)+(name,)
-            named_entries.append(e)
+            final_entries.append(e) 
+            # add them directly to the final entries, since these are basically the final results for this type of entry
 
 
-    from casc.SNO import _parse_d3_coretoc
+    from utils.casc.SNO import _parse_d3_coretoc, _parse_d3_packages
 
     # print ([c[2] for c in named_entries])
-    # coretoc_ckey = [c for c in named_entries if c[1]=="CoreTOC.dat"][0]
-    # sno_table = _parse_d3_coretoc(cr.get_file_by_ckey(coretoc_ckey))
+    coretoc_ckey = [c for c in final_entries if c[1]=="CoreTOC.dat"][0][2]
+    sno_table = _parse_d3_coretoc(cr.get_file_by_ckey(coretoc_ckey)) # snid : (name,sngrp,grpnm,grpext)
 
-    return named_entries
+    packages_ckey = [c for c in final_entries if c[1]=="Data_D3\\PC\\Misc\\Packages.dat"][0][2]
+    pkg_table = _parse_d3_packages(cr.get_file_by_ckey(packages_ckey))
+
+    for sf in sno_entries:
+        if sf[0]==SNO_FILE:
+            if sf[1] in sno_table: # if this file is in the sno_table, then we know it's name
+                sfn = sno_table[sf[1]]
+                final_entries.append((NAMED_FILE,f"{sfn[2]}/{sfn[0]}.{sfn[3]}",sf[2]))
+            else: # otherwise, we dont know the name.
+                final_entries.append((SNO_FILE,sf[1],sf[2]))
+        else: # sf is SNO_INDEXED_FILE
+            pass
+
+    return final_entries
 
 def parse_root_file(uid,fd,cascreader):
     """Returns an array of format [TYPE, ID, CKEY, EXTRA...],
-    Type = one of NAMED_FILE, SNO_FILE, SNO_INDEXED_FILE
-    Id = depends on type. NAMED:"strname", SNO:"snoid", SNO_INDEXED:("snoid","index")
+    Type = one of NAMED_FILE, ID_FILE, ID_INDEXED_FILE
+    Id = depends on type. NAMED:"strname", ID:"id", ID_INDEXED:("id","index")
     Ckey = that file's ckey
     Extra = uid specific data 
         d3: extra is the directory that the file is in
