@@ -1,17 +1,11 @@
 import os
 import struct
 from typing import Union
-from blizzutils import var_int,jenkins_hash,parse_build_config,parse_config,prefix_hash,hexkey_to_bytes,byteskey_to_hex
-from CASCUtils import parse_encoding_file,parse_root_file,r_cascfile,cascfile_size, NAMED_FILE,SNO_FILE,SNO_INDEXED_FILE
+from utils.blizzutils import var_int,jenkins_hash,parse_build_config,parse_config,prefix_hash,hexkey_to_bytes,byteskey_to_hex
+from utils.CASCUtils import parse_encoding_file,parse_root_file,r_cascfile,cascfile_size, NAMED_FILE,SNO_FILE,SNO_INDEXED_FILE
 
 #TODO
-# - make all the tables hex -> hex, instead of the current clusterfuck
-
-# methods of reducing memory usage
-# lossless:
-# - convert hex strs to ints
-# lossy
-# - only store the first ekey in ckey->ekey table
+# - make all the tables hex -> hex, instead of the current clusterfuck (slightly improved)
 
 def prep_listfile(fp):
     names={}
@@ -151,11 +145,17 @@ class CASCReader:
         except:
             return None
 
-    def get_file_by_ckey(self,ckey):
+    def get_file_by_ckey(self,ckey,max_size=-1):
         finfo = self.get_file_info_by_ckey(ckey)
         if finfo == None:
             return None
-        return r_cascfile(self.data_path,finfo.data_file,finfo.offset)
+        return r_cascfile(self.data_path,finfo.data_file,finfo.offset,max_size)
+
+    def on_progress(self,step,pct):
+        """ Override me! 
+        This function receives progress update events for anything that takes time in the program.
+        **Not implemented yet** """
+        pass
         
 
 if __name__ == '__main__':
@@ -174,7 +174,7 @@ if __name__ == '__main__':
 
     pr.disable()
     s = io.StringIO()
-    sortby = SortKey.CUMULATIVE
+    sortby = SortKey.TIME
     ps = Stats(pr, stream=s).sort_stats(sortby)
     ps.print_stats()
     print('\n'.join(s.getvalue().split("\n")[:20]))
