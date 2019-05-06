@@ -1,7 +1,7 @@
 import sys, os
 from PyQt5.QtWidgets import QWidget, QProgressBar, QGridLayout, QFileDialog, QLabel
 from PyQt5.QtCore import pyqtSlot, pyqtSignal, Qt
-from CASCUtils import beautify_filesize
+from utils.CASCUtils import beautify_filesize
 from time import time
 
 class SaveFileWidget(QWidget):
@@ -124,3 +124,4 @@ class SaveFileWidget(QWidget):
 
     def closeEvent(self, e):
         self.stopped=True
+        self.cascviewapp.sub_widget_closed(self)

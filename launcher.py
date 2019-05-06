@@ -1,6 +1,6 @@
 import requests
 import json
-from blizzutils import parse_config, parse_build_config, get_cdn_config, get_cdn_data
+from utils.blizzutils import parse_config, parse_build_config, get_cdn_config, get_cdn_data
 
 #TODO cache these two
 def getCatalogCDNs():
