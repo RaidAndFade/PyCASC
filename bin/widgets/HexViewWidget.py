@@ -24,7 +24,7 @@ class HexViewWidget(QWidget):
         self.close()
 
     def showText(self):
-        self.text_edit.setText(self.content.decode("utf-8"))
+        self.text_edit.setText(str(self.content,self.encoding))
         self.text_edit.show()
 
     def showHexdump(self):
@@ -51,6 +51,7 @@ class HexViewWidget(QWidget):
         self.text_edit.setText("Loading your file... Please wait")
         self.content = content
         self.file_size=file_size
+        self.encoding="utf-8"
 
         self.ext = os.path.splitext(filename)[1][1:]
         if file_type is None:
@@ -61,8 +62,17 @@ class HexViewWidget(QWidget):
             if g is not None and g.mime.split("/")[0] in ['video','audio']:
                 file_type=g.mime.split("/")[0]
                 self.ext=g.extension
-            elif (g is None or g.mime.split("/")[0] not in ['application']) and all(0x20 <= x <= 0x7E or x in excemptedChars for x in content):
-                file_type="txt"
+            elif (g is None or g.mime.split("/")[0] not in ['application']):
+                if content[0:4] == b'\xff\xfe\0\0':
+                    self.encoding="utf-32"
+                    file_type="txt"
+                elif content[0:2] == b'\xff\xfe':
+                    self.encoding="utf-16"
+                    file_type="txt"
+                elif all(0x20 <= x <= 0x7E or x in excemptedChars for x in content):
+                    self.encoding="utf-8"
+                    file_type="txt"
+
         self.type = file_type
 
         if file_type=="txt": # show strings as normal text files

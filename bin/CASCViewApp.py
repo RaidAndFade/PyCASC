@@ -5,8 +5,8 @@ from PyQt5.QtCore import pyqtSlot, Qt, QBuffer, QByteArray, QUrl, QMimeData, pyq
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 from PyQt5.QtMultimediaWidgets import QVideoWidget
 from PyQt5 import QtCore, QtMultimedia
-from utils.CASCUtils import beautify_filesize
-from read import CASCReader
+from PyCASC.utils.CASCUtils import beautify_filesize, SNO_INDEXED_FILE
+from PyCASC import CASCReader
 from widgets.HexViewWidget import HexViewWidget
 from widgets.SaveFileWidget import SaveFileWidget
 import webbrowser
@@ -43,6 +43,7 @@ class CascViewApp(QMainWindow):
 
         self.CASCReader=None
         self.files=[]
+        self.unknown_files=[]
         self.filetree=self.genFileTree()
         self.curPath=[]
         self.openWidgets=[]
@@ -52,6 +53,7 @@ class CascViewApp(QMainWindow):
     def load_casc_dir(self, dir):
         self.CASCReader = CASCReader(dir)
         self.files = self.CASCReader.list_files()
+        self.unknown_files = self.CASCReader.list_unnamed_files()
         self.filetree = self.genFileTree()
         self.curPath = []
         self.populateTable()
@@ -66,6 +68,12 @@ class CascViewApp(QMainWindow):
                     toptree['folders'][sp]={'folders':{},'files':{}}
                 toptree = toptree['folders'][sp]
             toptree['files'][path[-1]]=f
+
+        ftree['folders']['_UNNAMED'] = {'folders':{},'files':{}}
+        uktree = ftree['folders']['_UNNAMED']
+        for f in self.unknown_files:
+            uktree['files'][f"{f[0]:x}"]=f
+
         return ftree
         
     def initUI(self):
@@ -279,6 +287,6 @@ if __name__ == '__main__':
     # ex.load_casc_dir("G:/Misc Games/Warcraft III")
     # ex.load_casc_dir("G:/Misc Games/Diablo III") 
 
-    ex.load_casc_dir("/Users/sepehr/Diablo III") #Diablo 3
-    # ex.load_casc_dir("/Applications/Warcraft III") #War3
+    # ex.load_casc_dir("/Users/sepehr/Diablo III") #Diablo 3
+    ex.load_casc_dir("/Applications/Warcraft III") #War3
     sys.exit(app.exec_())   
