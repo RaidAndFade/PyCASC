@@ -71,7 +71,6 @@ def _get_cdn_file(cdn_url,cdn_path,file_type,file_hash,ssl=False,cache=True,cach
     if cache and os.path.exists(cache_file):
         with open(cache_file,"rb") as f:
             d = pickle.load(f)
-            print(d['data'])
             if d['time']<time()+cache_dur:
                 return d['data']
     r = requests.get(u).text

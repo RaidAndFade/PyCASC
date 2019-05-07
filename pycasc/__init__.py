@@ -1,8 +1,8 @@
 import os
 import struct
 from typing import Union
-from utils.blizzutils import var_int,jenkins_hash,parse_build_config,parse_config,prefix_hash,hexkey_to_bytes,byteskey_to_hex
-from utils.CASCUtils import parse_encoding_file,parse_root_file,r_cascfile,cascfile_size, NAMED_FILE,SNO_FILE,SNO_INDEXED_FILE
+from PyCASC.utils.blizzutils import var_int,jenkins_hash,parse_build_config,parse_config,prefix_hash,hexkey_to_bytes,byteskey_to_hex
+from PyCASC.utils.CASCUtils import parse_encoding_file,parse_root_file,r_cascfile,cascfile_size, NAMED_FILE,SNO_FILE,SNO_INDEXED_FILE
 
 #TODO
 # - make all the tables hex -> hex, instead of the current clusterfuck (slightly improved)
@@ -17,6 +17,7 @@ def prep_listfile(fp):
 
 class FileInfo:
     ekey:int
+    ckey:int
     data_file:int
     offset:int
     compressed_size:int
@@ -96,12 +97,19 @@ class CASCReader:
         self.file_translate_table.append((NAMED_FILE,"_DOWNLOAD",download_hash1))
         self.file_translate_table.append((NAMED_FILE,"_SIZE",size_hash1))
 
+        for ckey in self.ckey_map:
+            first_ekey = self.ckey_map[ckey]
+            if first_ekey in self.file_table:
+                fi = self.file_table[first_ekey]
+                fi.ckey = ckey
+
         for x in self.file_translate_table:
+            ckey=int(x[2],16)
+            fi = self.get_file_info_by_ckey(ckey)
+            if fi is None:
+                continue
             if x[0] is NAMED_FILE:
-                ckey=x[2]
-                fi = self.get_file_info_by_ckey(ckey)
-                if fi is not None:
-                    fi.name=x[1]
+                fi.name=x[1]
 
     def get_name(self,ckey):
         fi = self.get_file_info_by_ckey(ckey)
@@ -118,6 +126,17 @@ class CASCReader:
                 n=self.get_name(x)
                 if n is not None:
                     files.append((n,x))
+        return files
+    
+    def list_unnamed_files(self):
+        """Returns a list of tuples, each tuple of format (Ckey,Ckey) (to match with named files list)"""
+        files = []
+        for ckey in self.ckey_map:
+            first_ekey = self.ckey_map[ckey]
+            if first_ekey in self.file_table:
+                n=self.get_name(ckey)
+                if n is None:
+                    files.append((ckey,ckey))
         return files
 
     def get_file_size_by_ckey(self,ckey):
@@ -140,6 +159,7 @@ class CASCReader:
         """Takes ckey in either int form or hex form"""
         if isinstance(ckey,str):
             ckey=int(ckey,16)
+
         try:
             return self.file_table[self.ckey_map[ckey]]
         except:

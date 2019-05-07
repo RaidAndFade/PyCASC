@@ -1,6 +1,6 @@
 import struct
 from io import BytesIO
-from utils.blizzutils import byteskey_to_hex
+from PyCASC.utils.blizzutils import byteskey_to_hex
 
 def beautify_filesize(i):
     t,c=["","K","M","G","T"],0
@@ -121,8 +121,8 @@ NAMED_FILE=2
 
 def _parse_plaintext_root(fd):
     name_map = []
-    for x in fd.splitlines():
-        filepath,ckey,flags = x.decode("utf-8").split("|")
+    for x in str(fd,"utf-8").splitlines():
+        filepath,ckey,flags = x.split("|")
         name_map.append((NAMED_FILE,filepath,ckey))
     return name_map
 
@@ -173,10 +173,9 @@ def _parse_d3_root(fd,cr):
             final_entries.append(e) 
             # add them directly to the final entries, since these are basically the final results for this type of entry
 
-
-    from utils.casc.SNO import _parse_d3_coretoc, _parse_d3_packages
-
     # print ([c[2] for c in named_entries])
+    from PyCASC.utils.casc.SNO import _parse_d3_coretoc, _parse_d3_packages
+    
     coretoc_ckey = [c for c in final_entries if c[1]=="CoreTOC.dat"][0][2]
     sno_table = _parse_d3_coretoc(cr.get_file_by_ckey(coretoc_ckey)) # snid : (name,sngrp,grpnm,grpext)
 
@@ -206,7 +205,7 @@ def parse_root_file(uid,fd,cascreader):
     Id = depends on type. NAMED:"strname", ID:"id", ID_INDEXED:("id","index")
     Ckey = that file's ckey
     Extra = uid specific data 
-        d3: extra is the directory that the file is in
+        d3: extra is the "directory" that the file is in
     """
     if uid in ["w3"]:
         return _parse_plaintext_root(fd)

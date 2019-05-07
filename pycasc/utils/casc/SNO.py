@@ -1,7 +1,7 @@
 from io import BytesIO
 import struct
 import pathlib
-from utils.CASCUtils import read_cstr
+from PyCASC.utils.CASCUtils import read_cstr
 
 SNOGroups={
     # id : ( name , ext )
