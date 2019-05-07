@@ -14,7 +14,7 @@ Dunno, was bored
 ## How do i use it?
 As a library? You shouldn't do that right now, the public api is completely undocumented and I've only tested it on War3 (which differs greatly from WoW / other games)
 
-As an app? You modify CASCViewApp.py at the very bottom, and change it to the directory of your WAR3 **(it may work for other games, but i'm not sure)** folder. And then run that file (assuming you have all of the packages in requirements.txt installed)
+As an app? You modify CASCViewApp.py at the very bottom, and change it to the directory of your WAR3 or D3 folder **(it may work for other games, but i'm not sure)** . And then run that file (assuming you have all of the packages in requirements.txt installed)
 
 ## What's the library do?
 - Open a basic (currently war3 only) CASC filesystem
@@ -29,8 +29,8 @@ Current features:
 - View text-files as text files
 - Open files externally, without having to export them.
 - View very basic file/folder information (basically just file size)
+- Folder exports ( export an entire file tree, with folder structure )
 
 Planned features:
-- Folder exports ( export an entire file tree, with folder structure )
 - DBC viewing & exporting as sql/csv ( Blizzard proprietary database format )
 - BLP viewing & exporting ( Blizzard proprietary image format )
