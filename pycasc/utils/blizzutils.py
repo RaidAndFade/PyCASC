@@ -3,9 +3,9 @@ import requests
 import os
 import hashlib
 import pickle
+from io import BytesIO
 from time import time
-
-CACHE_DURATION = 3600 # one hour
+from PyCASC import CACHE_DIRECTORY, CACHE_DURATION
 
 def parse_config(c) -> List[Dict[str,str]]:
     out = []
@@ -60,32 +60,48 @@ def jenkins_hash(key:bytes):
 def prefix_hash(s):
     return f"{s[:2]}/{s[2:4]}/{s}"
 
-# I don't really want to use this, since splitting it into different handlers allows easier 
-#  parsing of each subgroup (since the subgroups are quite similar)
-def _get_cdn_file(cdn_url,cdn_path,file_type,file_hash,ssl=False,cache=True,cache_dur=CACHE_DURATION):
-    """ Get a specified file from a CDN for a product."""
-    if not file_type in ['data','config','patch']:
-        raise Exception(f"Invalid file type {file_type}")
-    u=f"http://{cdn_url}/{cdn_path}/{file_type}/{file_hash[:2]}/{file_hash[2:4]}/{file_hash}"
-    cache_file = f"cache/{hashlib.sha256(u.encode('utf-8')).hexdigest()}.cache"
-    if cache and os.path.exists(cache_file):
+def get_cached(url,cache=True,cache_dur=CACHE_DURATION,max_size=-1):
+    cache_file = os.path.join(CACHE_DIRECTORY,f"{hashlib.sha256(url.encode('utf-8')).hexdigest()}.cache")
+    if os.path.exists(cache_file):
         with open(cache_file,"rb") as f:
             d = pickle.load(f)
             if d['time']<time()+cache_dur:
-                return d['data']
-    r = requests.get(u).text
-    if cache:
-        if not os.path.exists("cache"):
-            os.makedirs("cache")
+                d = d['data']
+    else:
+        buf=BytesIO()
+        rs=0
+        headers={}
+        with requests.get(url, headers=headers, stream=True) as r:
+            r.raise_for_status()
+            for x in r.iter_content(512):
+                buf.write(x)
+                rs+=len(x)
+                if max_size>0 and rs>max_size:
+                    break
+        d = buf.getvalue()
+        if not os.path.exists(CACHE_DIRECTORY):
+            os.makedirs(CACHE_DIRECTORY)
         with open(cache_file,"wb+") as f:
-            pickle.dump({'time':time(),'data':r},f)
-    return r
+            pickle.dump({'time':time(),'data':buf.getvalue()},f)
+    try:
+        return d.decode("utf-8")
+    except:
+        return d
 
-def get_cdn_data(cdn_url,cdn_path,file_hash,ssl=False,cache=True,cache_dur=CACHE_DURATION):
+# I don't really want to use this, since splitting it into different handlers allows easier 
+#  parsing of each subgroup (since the subgroups are quite similar)
+def _get_cdn_file(cdn_url,cdn_path,file_type,file_hash,cache=True,cache_dur=CACHE_DURATION,max_size=-1,index=False):
+    """ Get a specified file from a CDN for a product."""
+    if not file_type in ['data','config','patch']:
+        raise Exception(f"Invalid file type {file_type}")
+    u=f"http://{cdn_url}/{cdn_path}/{file_type}/{file_hash[:2]}/{file_hash[2:4]}/{file_hash}"+(".index" if index else "")
+    return get_cached(u,cache=cache,cache_dur=cache_dur,max_size=max_size)
+
+def get_cdn_data(cdn_url,cdn_path,file_hash,cache=True,cache_dur=CACHE_DURATION,max_size=-1,index=False):
     """ Gets a specified data file from the specified cdn """
-    return _get_cdn_file(cdn_url,cdn_path,'data',file_hash,ssl,cache,cache_dur)
+    return _get_cdn_file(cdn_url,cdn_path,'data',file_hash,cache,cache_dur,max_size=max_size,index=index)
 
-def get_cdn_config(cdn_url,cdn_path,file_hash,ssl=False,parse=True,cache=True,cache_dur=CACHE_DURATION):
+def get_cdn_config(cdn_url,cdn_path,file_hash,parse=True,cache=True,cache_dur=CACHE_DURATION,max_size=-1,index=False):
     """ Gets specified config from the specified cdn """
-    f = _get_cdn_file(cdn_url,cdn_path,'config',file_hash,ssl,cache,cache_dur)
+    f = _get_cdn_file(cdn_url,cdn_path,'config',file_hash,cache,cache_dur,max_size=max_size,index=index)
     return parse_config(f) if parse else f

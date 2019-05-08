@@ -1,27 +1,32 @@
 import requests, json, os, hashlib, pickle
 from time import time
-from PyCASC.utils.blizzutils import parse_config, parse_build_config, get_cdn_config, get_cdn_data
+from io import BytesIO
+from PyCASC import CACHE_DURATION
+from PyCASC.utils.blizzutils import parse_config, parse_build_config, get_cdn_config, get_cdn_data, get_cached
 
-CACHE_DURATION = 3600 # one hour
+def getProductCDNs(product):
+    return parse_config(get_cached(f"http://us.patch.battle.net:1119/{product}/cdns", cache_dur=3600*24))
+def getProductVersions(product):
+    return parse_config(get_cached(f"http://us.patch.battle.net:1119/{product}/versions", cache_dur=3600*24))
+def getProductBlobs(product):
+    return parse_config(get_cached(f"http://us.patch.battle.net:1119/{product}/blobs", cache_dur=3600*24))
+def getProductInstallBlob(product):
+    return get_cached(f"http://us.patch.battle.net:1119/{product}/blob/install", cache_dur=3600*24)
+def getProductGameBlob(product):
+    return get_cached(f"http://us.patch.battle.net:1119/{product}/blob/game", cache_dur=3600*24)
 
-def get_cached(url,cache=True,cache_dur=CACHE_DURATION):
-    cache_file = f"cache/{hashlib.sha256(url.encode('utf-8')).hexdigest()}.cache"
-    if os.path.exists(cache_file):
-        with open(cache_file,"rb") as f:
-            d = pickle.load(f)
-            if d['time']<time()+cache_dur:
-                return d['data']
-    r = requests.get(url).text
-    if not os.path.exists("cache"):
-        os.makedirs("cache")
-    with open(cache_file,"wb+") as f:
-        pickle.dump({'time':time(),'data':r},f)
-    return r
-
+def getProductCDNFile(product,file_hash,region="us",ftype="data",cache_dur=CACHE_DURATION,enc=None,max_size=-1,index=False):
+    cdnurl,cdnpath = getCDN(product,region)
+    if ftype == "config":
+        d = get_cdn_config(cdnurl,cdnpath,file_hash,parse=False,cache_dur=cache_dur,max_size=max_size, index=index)
+    else:
+        d = get_cdn_data(cdnurl,cdnpath,file_hash,cache_dur=cache_dur,max_size=max_size, index=index)
+    return d
+    
 def getCatalogCDNs():
-    return parse_config(get_cached("http://us.patch.battle.net:1119/catalogs/cdns"))
+    return parse_config(get_cached("http://us.patch.battle.net:1119/catalogs/cdns", cache_dur=3600*24))
 def getCatalogVersions():
-    return parse_config(get_cached("http://us.patch.battle.net:1119/catalogs/versions"))
+    return parse_config(get_cached("http://us.patch.battle.net:1119/catalogs/versions", cache_dur=3600*24))
 
 def fixStrings(data,locale="enUS",validStrings=None):
     """ Replace all instances of locale strings with the locale provided, validStrings must be None in non-recursive steps
@@ -49,8 +54,8 @@ def fixStrings(data,locale="enUS",validStrings=None):
                 out[k]=data[x]
     return out
 
-def getCDN(region="us"):
-    cdns = getCatalogCDNs()
+def getCDN(product="catalogs",region="us"):
+    cdns = getProductCDNs(product)
     r_cdn = [cdn for cdn in cdns if cdn['Name']==region]
     
     if len(r_cdn):
@@ -76,7 +81,7 @@ def getVersion(version=None,versions=None):
     return r_vrn
 
 def getCatalogRoot(region="us",version=None,versions=None):
-    cdnurl,cdnpath = getCDN(region)
+    cdnurl,cdnpath = getCDN("catalogs",region)
     r_vrn = getVersion(version,versions)
 
     bc_hash = r_vrn['BuildConfig']
@@ -93,7 +98,7 @@ def getProductData(product,region="us",version=None,locale="enUS",raw=False):
         return None
 
     prod=prods[product]
-    cdnurl, cdnpath = getCDN(region)
+    cdnurl, cdnpath = getCDN("catalogs",region)
     
     data = json.loads(get_cdn_data(cdnurl,cdnpath,prod['hash']))
     if not raw: # do cleanup ourselves

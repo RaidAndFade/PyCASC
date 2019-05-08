@@ -5,7 +5,6 @@ from PyCASC.utils.CASCUtils import beautify_filesize
 from time import time
 
 class SaveFileWidget(QWidget):
-
     TransferCompletedSignal = pyqtSignal(int)
 
     def __init__(self, items, dest, cascviewapp): 

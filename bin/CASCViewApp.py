@@ -6,7 +6,7 @@ from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 from PyQt5.QtMultimediaWidgets import QVideoWidget
 from PyQt5 import QtCore, QtMultimedia
 from PyCASC.utils.CASCUtils import beautify_filesize, SNO_INDEXED_FILE
-from PyCASC import CASCReader
+from PyCASC import DirCASCReader, CDNCASCReader
 from widgets.HexViewWidget import HexViewWidget
 from widgets.SaveFileWidget import SaveFileWidget
 import webbrowser
@@ -50,8 +50,16 @@ class CascViewApp(QMainWindow):
 
         self.initUI()
 
-    def load_casc_dir(self, dir):
-        self.CASCReader = CASCReader(dir)
+    def load_casc_dir(self, d):
+        self.CASCReader = DirCASCReader(d)
+        self.files = self.CASCReader.list_files()
+        self.unknown_files = self.CASCReader.list_unnamed_files()
+        self.filetree = self.genFileTree()
+        self.curPath = []
+        self.populateTable()
+
+    def load_casc_cdn(self, product):
+        self.CASCReader = CDNCASCReader(product)
         self.files = self.CASCReader.list_files()
         self.unknown_files = self.CASCReader.list_unnamed_files()
         self.filetree = self.genFileTree()
@@ -288,5 +296,6 @@ if __name__ == '__main__':
     # ex.load_casc_dir("G:/Misc Games/Diablo III") 
 
     # ex.load_casc_dir("/Users/sepehr/Diablo III") #Diablo 3
-    ex.load_casc_dir("/Applications/Warcraft III") #War3
+    # ex.load_casc_dir("/Applications/Warcraft III") #War3
+    ex.load_casc_cdn("w3")
     sys.exit(app.exec_())   

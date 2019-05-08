@@ -39,7 +39,7 @@ def _parse_ckey_pages(d,ckey_len,ekey_len,ckey_pagesize,ckey_pagecount):
             # cfsize, = struct.unpack(">i",d.read(4))
             ckey = int.from_bytes(d.read(ckey_len),byteorder='big')
             # assert ekcount == len(ekeys)
-            ckey_map[ckey]=int.from_bytes(d.read(ekey_len)[:9],byteorder='big')
+            ckey_map[ckey]=int.from_bytes(d.read(ekey_len),byteorder='big')
             # [byteskey_to_hex(d.read(ekey_len)) for x in range(ekcount)][0]
             d.seek(ekey_len*(ekcount-1),1)
     return ckey_map
@@ -69,13 +69,27 @@ def _r_casc_bltechunk(f,ci):
     else:
         raise Exception(f"Fuck you {etype} encoding")
 
+def parse_blte(df,read_data=True,max_size=-1):
+    if isinstance(df,bytes):
+        df=BytesIO(df)
+    blte_header=_r_casc_blteheader(df)
+    blte_data,ds = BytesIO(),0
+    if read_data:
+        for c in blte_header[3]: # for each chunk
+            chunk_data = _r_casc_bltechunk(df,c)
+            blte_data.write(chunk_data)
+            ds += c[1]
+            if max_size>0 and ds>max_size:
+                break
+    return blte_header, blte_data.getvalue()
+
 def cascfile_size(data_path,data_index,offset):
     size=0
     chunkcount=0
     with open(f"{data_path}data.{data_index:03d}","rb") as df:
         df.seek(offset+30) # fuck my ass
-        # data_header = _r_casc_dataheader(df)
-        blte_header = _r_casc_blteheader(df)
+        # r_casc_dataheader(df)
+        blte_header,dbfr=parse_blte(df,False)
         chunkcount=len(blte_header[3])
         for c in blte_header[3]: # for each chunk
             size+=c[1]
@@ -84,20 +98,12 @@ def cascfile_size(data_path,data_index,offset):
 def r_cascfile(data_path,data_index,offset,max_size=-1):
     """ Reads a given cascfile, reading as many chunks as needed to get *at least* max_size bytes."""
     # datafile = r_data(f"{data_path}data.{data_index:03d}")
-    data = BytesIO()
+    data = b''
     with open(f"{data_path}data.{data_index:03d}","rb") as df:
         df.seek(offset)
-        # data_header = _r_casc_dataheader(df)
-        df.seek(30,1)
-        blte_header = _r_casc_blteheader(df)
-        ds = 0
-        for c in blte_header[3]: # for each chunk
-            chunk_data = _r_casc_bltechunk(df,c)
-            data.write(chunk_data)
-            ds += c[1]
-            if max_size>0 and ds>max_size:
-                break
-    return data.getbuffer()
+        data_header = _r_casc_dataheader(df)
+        blte_header, data = parse_blte(df,max_size=max_size)
+    return data
 
 # import functools
 # import itertools
@@ -121,7 +127,10 @@ NAMED_FILE=2
 
 def _parse_plaintext_root(fd):
     name_map = []
-    for x in str(fd,"utf-8").splitlines():
+    if isinstance(fd,bytes):
+        fd = fd.decode("utf-8")
+
+    for x in fd.splitlines():
         filepath,ckey,flags = x.split("|")
         name_map.append((NAMED_FILE,filepath,ckey))
     return name_map
