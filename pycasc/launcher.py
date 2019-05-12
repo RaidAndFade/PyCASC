@@ -2,7 +2,7 @@ import requests, json, os, hashlib, pickle
 from time import time
 from io import BytesIO
 from PyCASC import CACHE_DURATION
-from PyCASC.utils.blizzutils import parse_config, parse_build_config, get_cdn_config, get_cdn_data, get_cached
+from PyCASC.utils.blizzutils import parse_config, parse_build_config, get_cdn_config, get_cdn_data, get_cached, have_cached, get_cdn_url
 
 def getProductCDNs(product):
     return parse_config(get_cached(f"http://us.patch.battle.net:1119/{product}/cdns", cache_dur=3600*24))
@@ -22,7 +22,11 @@ def getProductCDNFile(product,file_hash,region="us",ftype="data",cache_dur=CACHE
     else:
         d = get_cdn_data(cdnurl,cdnpath,file_hash,cache_dur=cache_dur,max_size=max_size, index=index)
     return d
-    
+
+def isCDNFileCached(product,file_hash,region="us",ftype="data",cache_dur=CACHE_DURATION,enc=None,max_size=-1,index=False):
+    cdnurl,cdnpath = getCDN(product,region)
+    return have_cached(get_cdn_url(cdnurl,cdnpath,ftype,file_hash,index=index),cache_dur=CACHE_DURATION)
+
 def getCatalogCDNs():
     return parse_config(get_cached("http://us.patch.battle.net:1119/catalogs/cdns", cache_dur=3600*24))
 def getCatalogVersions():
@@ -104,6 +108,8 @@ def getProductData(product,region="us",version=None,locale="enUS",raw=False):
     if not raw: # do cleanup ourselves
         data = fixStrings(data,locale=locale)
         for x in data['products']:
+            if 'uid' not in x['base']:
+                x['base']['uid'] = product
             x['base']['install']=data['installs'][x['base']['uid']]
             for y in x['base']['types']:
                 i=x['base']['types'][y]

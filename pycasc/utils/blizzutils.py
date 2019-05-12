@@ -60,14 +60,27 @@ def jenkins_hash(key:bytes):
 def prefix_hash(s):
     return f"{s[:2]}/{s[2:4]}/{s}"
 
-def get_cached(url,cache=True,cache_dur=CACHE_DURATION,max_size=-1):
+def have_cached(url,cache_dur=CACHE_DURATION):
     cache_file = os.path.join(CACHE_DIRECTORY,f"{hashlib.sha256(url.encode('utf-8')).hexdigest()}.cache")
     if os.path.exists(cache_file):
         with open(cache_file,"rb") as f:
-            d = pickle.load(f)
-            if d['time']<time()+cache_dur:
-                d = d['data']
+            ctime = int.from_bytes(f.read(4),byteorder="little")
+            return ctime<time()+cache_dur
     else:
+        return False
+
+def get_cached(url,cache=True,cache_dur=CACHE_DURATION,max_size=-1):
+    cache_file = os.path.join(CACHE_DIRECTORY,f"{hashlib.sha256(url.encode('utf-8')).hexdigest()}.cache")
+    # print(cache_file)
+    d = None
+
+    if os.path.exists(cache_file):
+        with open(cache_file,"rb") as f:
+            ctime = int.from_bytes(f.read(4),byteorder="little")
+            if ctime<time()+cache_dur:
+                d = f.read()
+
+    if d is None:
         buf=BytesIO()
         rs=0
         headers={}
@@ -82,7 +95,8 @@ def get_cached(url,cache=True,cache_dur=CACHE_DURATION,max_size=-1):
         if not os.path.exists(CACHE_DIRECTORY):
             os.makedirs(CACHE_DIRECTORY)
         with open(cache_file,"wb+") as f:
-            pickle.dump({'time':time(),'data':buf.getvalue()},f)
+            f.write(int(time()).to_bytes(4,byteorder="little"))
+            f.write(buf.getvalue())
     try:
         return d.decode("utf-8")
     except:
@@ -90,11 +104,14 @@ def get_cached(url,cache=True,cache_dur=CACHE_DURATION,max_size=-1):
 
 # I don't really want to use this, since splitting it into different handlers allows easier 
 #  parsing of each subgroup (since the subgroups are quite similar)
+def get_cdn_url(cdn_url,cdn_path,file_type,file_hash,index=False):
+    return f"http://{cdn_url}/{cdn_path}/{file_type}/{file_hash[:2]}/{file_hash[2:4]}/{file_hash}"+(".index" if index else "")
+
 def _get_cdn_file(cdn_url,cdn_path,file_type,file_hash,cache=True,cache_dur=CACHE_DURATION,max_size=-1,index=False):
     """ Get a specified file from a CDN for a product."""
     if not file_type in ['data','config','patch']:
         raise Exception(f"Invalid file type {file_type}")
-    u=f"http://{cdn_url}/{cdn_path}/{file_type}/{file_hash[:2]}/{file_hash[2:4]}/{file_hash}"+(".index" if index else "")
+    u=get_cdn_url(cdn_url,cdn_path,file_type,file_hash,index=index)
     return get_cached(u,cache=cache,cache_dur=cache_dur,max_size=max_size)
 
 def get_cdn_data(cdn_url,cdn_path,file_hash,cache=True,cache_dur=CACHE_DURATION,max_size=-1,index=False):

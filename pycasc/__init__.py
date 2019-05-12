@@ -6,7 +6,7 @@ from typing import Union, Dict
 CACHE_DURATION = 3600
 CACHE_DIRECTORY = os.path.join(os.getcwd(),"cache")
 
-from PyCASC.utils.blizzutils import var_int,jenkins_hash,parse_build_config,parse_config,prefix_hash,hexkey_to_bytes,byteskey_to_hex
+from PyCASC.utils.blizzutils import var_int,have_cached,get_cdn_url,jenkins_hash,parse_build_config,parse_config,prefix_hash,hexkey_to_bytes,byteskey_to_hex
 from PyCASC.utils.CASCUtils import parse_encoding_file,parse_root_file,r_cascfile,cascfile_size, NAMED_FILE,SNO_FILE,SNO_INDEXED_FILE
 
 
@@ -46,11 +46,10 @@ def r_idx(fp):
     return ents
 
 def r_cidx(df): 
-    # ok so my iq is incredibly high, and im going to parse cdn index files in reverse since the footer includes essential info
     d = BytesIO(df)
 
     curchksz=0x10
-    tocCHK, u3,u2,u1, bs, eos, ess, eks, chksz, numel, ftCHK = (None,)*11
+    tocCHK, vrsn,u2,u1, bs, eos, ess, eks, chksz, numel, ftCHK = (None,)*11
     validFooter = False
     while not validFooter and curchksz>0:
         ftrsize = curchksz*2 + 12
@@ -58,7 +57,7 @@ def r_cidx(df):
 
         tocCHK = d.read(curchksz)
         vrsn,u2,u1,bs,eos,ess,eks,chksz,numel = struct.unpack(f"8bI", d.read(12))
-        ftCHK = int.from_bytes(d.read(curchksz),byteorder="little")
+        ftCHK = d.read(curchksz)
 
         # a valid footer has version 1 (that i know of), and the length of the CHKs == chksz.
         validFooter = len(tocCHK) == chksz and vrsn == 1 
@@ -81,10 +80,10 @@ def r_cidx(df):
                 dupe+=1
                 continue
 
-            es=var_int(d,ess)
+            es=var_int(d,ess,False)
             if ek == 0 or es == 0:
                 break
-            eo=var_int(d,eos)
+            eo=var_int(d,eos,False)
 
             e=FileInfo()
             e.offset=eo
@@ -124,10 +123,26 @@ class CASCReader:
         return None
 
     def list_files(self):
-        raise NotImplementedError()
-
+        """Returns a list of tuples, each tuple of format (FileName, CKey)"""
+        files = []
+        for x in self.ckey_map:
+            first_ekey = self.ckey_map[x]
+            if first_ekey in self.file_table: # check if the ckey_map entry is inside the file.
+                finfo = self.get_file_info_by_ckey(x)
+                if finfo is not None and hasattr(finfo,'name'):
+                    files.append((finfo.name,x))
+        return files
+    
     def list_unnamed_files(self):
-        raise NotImplementedError()
+        """Returns a list of tuples, each tuple of format (Ckey,Ckey) (to match with named files list)"""
+        files = []
+        for ckey in self.ckey_map:
+            first_ekey = self.ckey_map[ckey]
+            if first_ekey in self.file_table:
+                finfo = self.get_file_info_by_ckey(ckey)
+                if finfo is not None and not hasattr(finfo,'name'):
+                    files.append((ckey,ckey))
+        return files
 
     def get_file_size_by_ckey(self,ckey):
         raise NotImplementedError()
@@ -141,13 +156,16 @@ class CASCReader:
     def get_file_info_by_ckey(self,ckey: Union[int,str]):
         raise NotImplementedError()
 
+    def is_file_fetchable(self,ckey,include_cdn=True):
+        raise NotImplementedError()
+
     def on_progress(self,step,pct):
         """ Override me! 
         This function receives progress update events for anything that takes time in the program.
         **Not implemented yet** """
         pass
 
-from PyCASC.launcher import getProductCDNFile, getProductVersions
+from PyCASC.launcher import getProductCDNFile, getProductVersions, isCDNFileCached
 from PyCASC.utils.blizzutils import parse_build_config
 from PyCASC.utils.CASCUtils import parse_blte
 class CDNCASCReader(CASCReader):
@@ -180,7 +198,8 @@ class CDNCASCReader(CASCReader):
             except AssertionError as e:
                 print("archive index file " + a + " did not match assertions, ignoring this for now since it only causes minor issues.")
                 # raise e
-        
+        print(f"[ETBL] {len(self.file_table)}")
+
         self.uid = self.build_config['build-uid']
         root_ckey = self.build_config['root']
         enc_hash1,enc_ekey = self.build_config['encoding'].split()
@@ -191,7 +210,7 @@ class CDNCASCReader(CASCReader):
         encfile = getProductCDNFile(product,enc_ekey,region,ftype="data",cache_dur=-1) # enc files never change. not that i know of
         encfile = parse_blte(encfile)[1]
 
-        self.ckey_map = parse_encoding_file(encfile)
+        self.ckey_map = parse_encoding_file(encfile,whole_key=True)
         print(f"[CTBL] {len(self.ckey_map)}")
 
         root_file = self.get_file_by_ckey(root_ckey)
@@ -208,15 +227,24 @@ class CDNCASCReader(CASCReader):
 
         CASCReader.__init__(self)
 
-    def list_files(self):
-        files=[]
-        for x in self.file_translate_table:
-            if x[0] == NAMED_FILE:
-                files.append((x[1],x[2]))
-        return files
+    # def list_files(self):
+    #     files=[]
+    #     for x in self.file_translate_table:
+    #         if x[0] == NAMED_FILE:
+    #             files.append((x[1],x[2]))
+    #     return files
 
-    def list_unnamed_files(self):
-        return []
+    # def list_unnamed_files(self):
+    #     files=[]
+    #     for x in self.ckey_map:
+    #         knwn = False
+    #         for y in self.file_translate_table:
+    #             if x == y[2]:
+    #                 knwn=True
+    #                 break
+    #         if not knwn:
+    #             files.append((x,x))
+    #     return files
 
     def get_file_info_by_ckey(self, ckey):
         if isinstance(ckey,str):
@@ -226,7 +254,10 @@ class CDNCASCReader(CASCReader):
             return None
 
         if self.ckey_map[ckey] in self.file_table:
-            return self.file_table[ self.ckey_map[ckey]]
+            finfo = self.file_table[self.ckey_map[ckey]]
+            if not hasattr(finfo,"ckey"):
+                finfo.ckey = ckey
+            return finfo
         else:
             if ckey not in self.ckey_map:
                 return None
@@ -240,13 +271,15 @@ class CDNCASCReader(CASCReader):
     def _get_file_blte(self,finfo,with_data=True,max_size=-1):
         from requests.exceptions import HTTPError
         if hasattr(finfo,"data_file") and finfo.data_file is not None:
-            archive_file = getProductCDNFile(self.product,finfo.data_file,max_size=max_size)
+            # archives never expire
+            archive_file = getProductCDNFile(self.product,finfo.data_file,cache_dur=-1)
             return parse_blte(archive_file[finfo.offset:finfo.offset+finfo.compressed_size])
-            # print(finfo.data_file,finfo.offset,finfo.compressed_size)
         else:
             ekey = f"{finfo.ekey:032x}"
-            print(ekey,f"{finfo.ckey:032x}")
-            return parse_blte(getProductCDNFile(self.product,ekey,max_size=max_size),read_data=with_data)
+            # print(ekey,f"{finfo.ckey:032x}")
+            # These files should also never expire, since if they did their ckey would be different. 
+            #  but for sanity i'll keep for 10 days
+            return parse_blte(getProductCDNFile(self.product,ekey,max_size=max_size,cache_dur=3600*24*10),read_data=with_data)
 
     def _populate_file_info_sizes(self,finfo):
         blte_header,_ = self._get_file_blte(finfo,with_data=False)
@@ -256,26 +289,45 @@ class CDNCASCReader(CASCReader):
             finfo.uncompressed_size+=c[1]
 
     def get_file_size_by_ckey(self, ckey):
-        finfo = self.get_file_info_by_ckey(ckey)
-        if finfo == None:
-            return None
-        if not hasattr(finfo,"uncompressed_size") or finfo.uncompressed_size is None:
-            self._populate_file_info_sizes(finfo)
-        return finfo.uncompressed_size
+        try:
+            finfo = self.get_file_info_by_ckey(ckey)
+            if finfo == None:
+                return None
+            if not hasattr(finfo,"uncompressed_size") or finfo.uncompressed_size is None:
+                self._populate_file_info_sizes(finfo)
+            return finfo.uncompressed_size
+        except:
+            return 0
     
     def get_chunk_count_by_ckey(self, ckey):
-        finfo = self.get_file_info_by_ckey(ckey)
-        if finfo == None:
-            return None
-        if not hasattr(finfo,"uncompressed_size") or finfo.uncompressed_size is None:
-            self._populate_file_info_sizes(finfo)
-        return finfo.chunk_count
+        try:
+            finfo = self.get_file_info_by_ckey(ckey)
+            if finfo == None:
+                return None
+            if not hasattr(finfo,"uncompressed_size") or finfo.uncompressed_size is None:
+                self._populate_file_info_sizes(finfo)
+            return finfo.chunk_count
+        except:
+            return 0
 
     def get_file_by_ckey(self,ckey,max_size=-1):
         finfo = self.get_file_info_by_ckey(ckey)
-        if finfo == None:
+        if finfo is None:
             return None
         return self._get_file_blte(finfo,max_size=max_size)[1]
+    
+    def is_file_fetchable(self, ckey, include_cdn=True):
+        if include_cdn:
+            return self.get_file_info_by_ckey(ckey) is not None
+        else:
+            finfo = self.get_file_info_by_ckey(ckey)
+            if finfo is None:
+                return False
+            if hasattr(finfo,"data_file") and finfo.data_file is not None:
+                return isCDNFileCached(self.product,finfo.data_file,cache_dur=-1)
+            else:
+                ekey = f"{finfo.ekey:032x}"
+                return isCDNFileCached(self.product,ekey,cache_dur=3600*24*10)
 
 class DirCASCReader(CASCReader):
     def __init__(self,path):
@@ -320,6 +372,7 @@ class DirCASCReader(CASCReader):
         self.ckey_map = parse_encoding_file(enc_file) # maps ckey(hexstr) -> ekey(int of first 9 bytes)
         print(f"[CTBL] {len(self.ckey_map)}")
 
+        # print(root_ckey,self.ckey_map[int(root_ckey,16)],self.file_table[self.ckey_map[int(root_ckey,16)]])
         root_file = self.get_file_by_ckey(root_ckey)
         self.file_translate_table = parse_root_file(self.uid,root_file,self) # maps some ID(can be filedataid, path, whatever) -> ckey
         print(f"[FTTBL] {len(self.file_translate_table)}")
@@ -352,31 +405,9 @@ class DirCASCReader(CASCReader):
 
     def get_file_by_ckey(self,ckey,max_size=-1):
         finfo = self.get_file_info_by_ckey(ckey)
-        if finfo == None:
+        if finfo is None:
             return None
         return r_cascfile(self.data_path,finfo.data_file,finfo.offset,max_size)
-
-    def list_files(self):
-        """Returns a list of tuples, each tuple of format (FileName, CKey)"""
-        files = []
-        for x in self.ckey_map:
-            first_ekey = self.ckey_map[x]
-            if first_ekey in self.file_table: # check if the ckey_map entry is inside the file.
-                n=self.get_name(x)
-                if n is not None:
-                    files.append((n,x))
-        return files
-    
-    def list_unnamed_files(self):
-        """Returns a list of tuples, each tuple of format (Ckey,Ckey) (to match with named files list)"""
-        files = []
-        for ckey in self.ckey_map:
-            first_ekey = self.ckey_map[ckey]
-            if first_ekey in self.file_table:
-                n=self.get_name(ckey)
-                if n is None:
-                    files.append((ckey,ckey))
-        return files
     
     def get_file_info_by_ckey(self, ckey):
         """Takes ckey in either int form or hex form"""
@@ -387,6 +418,10 @@ class DirCASCReader(CASCReader):
             return self.file_table[self.ckey_map[ckey]]
         except:
             return None
+
+    def is_file_fetchable(self, ckey, include_cdn=True):
+        finfo = self.get_file_info_by_ckey(ckey)
+        return finfo is not None
 
 if __name__ == '__main__':
     import cProfile, io
@@ -400,14 +435,22 @@ if __name__ == '__main__':
     # On my mac, these are the paths:
     # cr = DirCASCReader("/Users/sepehr/Diablo III") #Diablo 3
     # cr = DirCASCReader("/Applications/Warcraft III") # War 3
-    cr = CDNCASCReader("w3")
+
+    # war3, diablo3, hots, sc2,  ow, hearthstone, wow,  wowclassic,
+    #   w3,      d3, hero,  s2, pro,         hsb, wow, wow_classic,
+
+    # supposedly supported: w3, d3
+
+    # hero is mndx, same with s2
+    cr = CDNCASCReader("s2")
+
     print(f"{len(cr.list_files())} named files loaded in list")
 
     pr.disable()
     s = io.StringIO()
-    sortby = SortKey.TIME
+    sortby = SortKey.CUMULATIVE
     ps = Stats(pr, stream=s).sort_stats(sortby)
     ps.print_stats()
-    print('\n'.join(s.getvalue().split("\n")[:20]))
+    print(s.getvalue())
     import time
     time.sleep(15)
