@@ -47,6 +47,7 @@ class CascViewApp(QMainWindow):
         self.filetree=self.genFileTree()
         self.curPath=[]
         self.openWidgets=[]
+        self.isCDN=False
 
         self.initUI()
 
@@ -65,6 +66,7 @@ class CascViewApp(QMainWindow):
         self.filetree = self.genFileTree()
         self.curPath = []
         self.populateTable()
+        self.isCDN=True
 
     def genFileTree(self):
         ftree = {'folders':{},'files':{}}
@@ -170,8 +172,8 @@ class CascViewApp(QMainWindow):
         self.infoTable.setItem(0, 0, QTableWidgetItem(""))
         self.infoTable.insertRow(1) # size
         self.infoTable.setItem(1, 0, QTableWidgetItem(""))
-        # self.infoTable.insertRow(2)
-        # self.infoTable.setItem(2, 0, QTableWidgetItem(""))
+        self.infoTable.insertRow(2)
+        self.infoTable.setItem(2, 0, QTableWidgetItem(""))
 
         self.infoTable.setFixedWidth(200)
         self.infoTable.setSelectionMode(QAbstractItemView.NoSelection)
@@ -235,12 +237,25 @@ class CascViewApp(QMainWindow):
             return
         item=item[0]
         if not item.is_folder:
-            size = self.CASCReader.get_file_size_by_ckey(item.file_data[1])
-            chunk_count = self.CASCReader.get_chunk_count_by_ckey(item.file_data[1])
             self.infoTable.item(0,0).setText("File: "+item.text())
-            self.infoTable.item(1,0).setText(f"Size: {beautify_filesize(size)} ({chunk_count} chunk(s))")
-            # self.infoTable.item(3,0).setText(item.text())
+            if self.CASCReader.is_file_fetchable(item.file_data[1],include_cdn=False): 
+                # if its fetchable without cdn, it's local. It can't not be fetchable at this 
+                #  point since only fetchable files are on the file list.
+                self.infoTable.item(2,0).setText(f"DoubleClick to View")
+            else:
+                self.infoTable.item(2,0).setText(f"DoubleClick to Fetch")
+
+            if self.isCDN:
+                finfo = self.CASCReader.get_file_info_by_ckey(item.file_data[1])
+                self.infoTable.item(1,0).setText(f"Archive File: {finfo.data_file[:12]} {finfo.compressed_size}" if hasattr(finfo,"data_file") else "CDN File")
+                # self.infoTable.item(1,0).setText(f"Archive File")
+            else:
+                size = self.CASCReader.get_file_size_by_ckey(item.file_data[1])
+                chunk_count = self.CASCReader.get_chunk_count_by_ckey(item.file_data[1])
+                self.infoTable.item(1,0).setText(f"Size: {beautify_filesize(size)} ({chunk_count} chunk(s))")
+                self.infoTable.item(2,0).setText(f"")
         else:
+            self.infoTable.item(2,0).setText(f"")
             if item.is_back_button: 
                 self.infoTable.item(0,0).setText("Parent Directory")
                 self.infoTable.item(1,0).setText("")
@@ -297,5 +312,5 @@ if __name__ == '__main__':
 
     # ex.load_casc_dir("/Users/sepehr/Diablo III") #Diablo 3
     # ex.load_casc_dir("/Applications/Warcraft III") #War3
-    ex.load_casc_cdn("w3")
+    ex.load_casc_cdn("hsb")
     sys.exit(app.exec_())   
