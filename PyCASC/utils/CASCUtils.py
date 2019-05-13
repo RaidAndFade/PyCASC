@@ -1,6 +1,7 @@
 import struct
 from io import BytesIO
-from PyCASC.utils.blizzutils import byteskey_to_hex
+from typing import List
+from PyCASC.utils.blizzutils import byteskey_to_hex, var_int
 
 def beautify_filesize(i):
     t,c=["","K","M","G","T"],0
@@ -46,6 +47,111 @@ def _parse_ckey_pages(d,ckey_len,ekey_len,ckey_pagesize,ckey_pagecount,whole_key
             # [byteskey_to_hex(d.read(ekey_len)) for x in range(ekcount)][0]
             d.seek(ekey_len*(ekcount-1),1)
     return ckey_map
+
+class INTag:
+    name:str
+    tagtype:int
+    flags:List[int]
+
+class INEntry:
+    name:str
+    md5:int
+    size:int
+    tags:List[INTag]
+
+def parse_install_file(fd):
+    f = BytesIO(fd)
+
+    assert f.read(2) == b"IN"
+    b1,b2 = f.read(2)
+
+    tag_num = int.from_bytes(f.read(2),byteorder="big")
+    file_num = int.from_bytes(f.read(4),byteorder="big")
+    mask_len = (file_num + 7) // 8
+
+    tags = []
+    for x in range(tag_num):
+        t = INTag()
+        t.name = read_cstr(f)
+        t.tagtype = int.from_bytes(f.read(2),byteorder="little")
+        t.flags = []
+
+        for y in range(mask_len):
+            bd = f.read(1)[0]
+            bd = (((bd * 0x0202020202) & 0x010884422010) % 1023) 
+            for z in range(8):
+                if (bd & (2 ** z)) > 0:
+                    t.flags.append(y*8+z)
+        tags.append(t)
+
+    files = []
+    for x in range(file_num):
+        e = INEntry()
+        e.name = read_cstr(f)
+        e.md5 = var_int(f,16,False)
+        e.size = var_int(f,4,False)
+        e.tags = [t.name for t in tags if x in t.flags]
+        files.append(e)
+
+    with open("infl","w+") as n:
+        for x in range(len(files)):
+            ine = files[x]
+            n.write(str(ine.name)+" : "+str(ine.tags)+"\n")
+
+    return files
+
+class DLEntry:
+    key:bytes
+    index:int
+    tags:List[str]
+
+def parse_download_file(fd):
+    f = BytesIO(fd)
+
+    assert f.read(2) == b"DL"
+    b1,b2,b3 = f.read(3)
+
+    file_num = int.from_bytes(f.read(4),byteorder="big")
+    tag_num = int.from_bytes(f.read(2),byteorder="big")
+
+    mask_len = (file_num + 7) // 8
+
+    dl_entries = []
+
+    print(file_num)
+
+    for x in range(file_num):
+        ck = f.read(16) # hash
+        f.seek(0xA,1) # unk
+
+        dle = DLEntry()
+        dle.key = ck
+        dle.index = x
+        dle.tags = []
+        dl_entries.append(dle)
+
+    f.read(5) # idfk.
+
+    for x in range(tag_num):
+        tagname = read_cstr(f)
+        tagtype = int.from_bytes(f.read(2),byteorder="little")
+
+        for y in range(mask_len):
+            bd = f.read(1)[0]
+            bd = (((bd * 0x0202020202) & 0x010884422010) % 1023) 
+            for z in range(8):
+                # print(f"[{tagname}] {bd:b} & {2**z:b}? ({y*8+z})")
+                if y*8+z < len(dl_entries) and (bd & (2 ** z)) > 0:
+                    dl_entries[y*8+z-1].tags.append(tagname)
+
+    # assert 1+1==4
+
+    with open("dlfl","w+") as n:
+        for x in range(len(dl_entries)):
+            dle = dl_entries[x]
+            n.write(str(x)+" : "+str(dle.tags)+"\n")
+    
+    return dl_entries
 
 def _r_casc_dataheader(f):
     blth,sz,f_0,f_1,chkA,chkB=struct.unpack("16sI2b4s4s",f.read(30))
@@ -125,7 +231,10 @@ def read_cstr(f):
     while c != b'\0':
         s+=c
         c=f.read(1)
-    return s.decode("utf-8")
+    try:
+        return s.decode("utf-8")
+    except UnicodeDecodeError:
+        print(f"Failed to decode {s}")
 
 #ROOT FILES === THIS SECTION WILL BE LARGE.
 SNO_FILE=0

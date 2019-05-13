@@ -7,7 +7,7 @@ CACHE_DURATION = 3600
 CACHE_DIRECTORY = os.path.join(os.getcwd(),"cache")
 
 from PyCASC.utils.blizzutils import var_int,have_cached,get_cdn_url,jenkins_hash,parse_build_config,parse_config,prefix_hash,hexkey_to_bytes,byteskey_to_hex
-from PyCASC.utils.CASCUtils import parse_encoding_file,parse_root_file,r_cascfile,cascfile_size, NAMED_FILE,SNO_FILE,SNO_INDEXED_FILE
+from PyCASC.utils.CASCUtils import parse_encoding_file,parse_install_file,parse_download_file,parse_root_file,r_cascfile,cascfile_size, NAMED_FILE,SNO_FILE,SNO_INDEXED_FILE
 
 
 def prep_listfile(fp):
@@ -169,7 +169,7 @@ from PyCASC.launcher import getProductCDNFile, getProductVersions, isCDNFileCach
 from PyCASC.utils.blizzutils import parse_build_config
 from PyCASC.utils.CASCUtils import parse_blte
 class CDNCASCReader(CASCReader):
-    def __init__(self, product, region="us"):
+    def __init__(self, product, region="us", read_download_file=False, read_install_file=False):
         self.product = product
 
         vrs = [x for x in getProductVersions(product) if x['Region']==region]
@@ -216,6 +216,14 @@ class CDNCASCReader(CASCReader):
         root_file = self.get_file_by_ckey(root_ckey)
         self.file_translate_table = parse_root_file(self.uid,root_file,self) # maps some ID(can be filedataid, path, whatever) -> ckey
         print(f"[FTTBL] {len(self.file_translate_table)}")
+
+        if read_download_file:
+            dle = parse_download_file(self.get_file_by_ckey(download_hash1))
+
+        if read_install_file:
+            ine = parse_install_file(self.get_file_by_ckey(inst_hash1))
+            for x in ine:
+                self.file_translate_table.append((NAMED_FILE,x.name,f"{x.md5:x}"))
 
         self.file_translate_table.append((NAMED_FILE,"_ROOT",root_ckey))
         
