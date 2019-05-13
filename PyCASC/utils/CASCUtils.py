@@ -226,126 +226,6 @@ def read_cstr(f):
 SNO_FILE=0
 SNO_INDEXED_FILE=1
 NAMED_FILE=2
-
-def _parse_warcraft3_root(fd):
-    name_map = []
-    if isinstance(fd,bytes):
-        fd = fd.decode("utf-8")
-
-    for x in fd.splitlines():
-        filepath,ckey,flags = x.split("|")
-        name_map.append((NAMED_FILE,filepath,ckey))
-    return name_map
-
-def _parse_hearthstone_root(fd):
-    name_map = []
-    if isinstance(fd,bytes):
-        fd = fd.decode("utf-8")
-
-    for x in fd.splitlines():
-        filepath,unk,ckey = x.split("|")
-        name_map.append((NAMED_FILE,filepath,ckey))
-    return name_map
-
-def _parse_d3_root_entry(df,t):
-    ckey = byteskey_to_hex(df.read(16))
-    if t is SNO_FILE or t is SNO_INDEXED_FILE:
-        snoid,=struct.unpack("I",df.read(4))
-        if t is SNO_INDEXED_FILE:
-            findex,=struct.unpack("I",df.read(4))
-            return t,(snoid,findex),ckey
-        else:
-            return t,snoid,ckey
-    elif t is NAMED_FILE:
-        return t,read_cstr(df),ckey
-
-def _parse_d3_root(fd,cr):
-    f = BytesIO(fd)
-    sig = f.read(4)
-    assert sig == b'\xc4\xd0\x07\x80'
-    count, = struct.unpack("I",f.read(4))
-    final_entries = []
-    sno_entries = []
-    dirs = []
-    for _ in range(count):
-        ckey=f.read(16)
-        name=read_cstr(f)
-        dirs.append((name,ckey))
-
-    for name,ckey in dirs:
-        ckey=byteskey_to_hex(ckey)
-        final_entries.append((NAMED_FILE,"_ROOTFILES/"+name,ckey))
-        dirfile = cr.get_file_by_ckey(ckey)
-        if dirfile is None:
-            continue
-        df = BytesIO(dirfile)
-        dfmagic = df.read(4)
-
-        snocount, = struct.unpack("I",df.read(4))
-        for _ in range(snocount):
-            e = _parse_d3_root_entry(df,SNO_FILE)+(name,)
-            sno_entries.append(e)
-        
-        snoidx_count, = struct.unpack("I",df.read(4))
-        for _ in range(snoidx_count):
-            e = _parse_d3_root_entry(df,SNO_INDEXED_FILE)+(name,)
-            sno_entries.append(e)
-
-        namecount, = struct.unpack("I",df.read(4))
-        for _ in range(namecount):
-            e = _parse_d3_root_entry(df,NAMED_FILE)+(name,)
-            final_entries.append(e) 
-            # add them directly to the final entries, since these are basically the final results for this type of entry
-
-    # print ([c[2] for c in named_entries])
-    from PyCASC.utils.casc.SNO import _parse_d3_coretoc, _parse_d3_packages
-    
-    coretoc_ckey = [c for c in final_entries if c[1]=="CoreTOC.dat"][0][2]
-    sno_table = _parse_d3_coretoc(cr.get_file_by_ckey(coretoc_ckey)) # snid : (name,sngrp,grpnm,grpext)
-
-    packages_ckey = [c for c in final_entries if c[1]=="Data_D3\\PC\\Misc\\Packages.dat"][0][2]
-    pkg_table = _parse_d3_packages(cr.get_file_by_ckey(packages_ckey)) # fn : (fpath,fname,fext)
-
-    for sf in sno_entries:
-        if sf[0]==SNO_FILE:
-            if sf[1] in sno_table: # if this file is in the sno_table, then we know it's name
-                sfn = sno_table[sf[1]]
-                final_entries.append((NAMED_FILE,f"{sfn[2]}/{sfn[0]}.{sfn[3]}",sf[2]))
-            else: # otherwise, we dont know the name.
-                final_entries.append((SNO_FILE,sf[1],sf[2]))
-        else: # sf is SNO_INDEXED_FILE
-            if sf[1][0] in sno_table: # if this file is in the sno_table, then we know it's name
-                sfn = sno_table[sf[1][0]]
-                pkg = pkg_table[sfn[0]]
-                final_entries.append((NAMED_FILE,f"{sfn[2]}/{pkg[1]}/{sf[1][1]:05d}{pkg[-1]}",sf[2]))
-            else: # otherwise, we dont know the name.
-                final_entries.append((SNO_INDEXED_FILE,sf[1],sf[2]))
-
-    return final_entries
-
-def _parse_mndx_root(fd):
-    f = BytesIO(fd)
-    assert f.read(4) == b'MNDX'
-
-    hver,fver = struct.unpack("II",f.read(8))
-    assert 1 >= fver >= 2
-
-    if hver == 2:
-        f.seek(8,1)
-    
-    mio, mic, mis = struct.unpack("III", f.read(12))
-    mdo, mdc, mdv, mds = struct.unpack("IIII", f.read(16))
-    assert mic <= 3 and mis == 20
-
-    marinfos = []
-    marfiles = []
-    for _ in range(mic):
-       marinfos.append(struct.unpack("5I",f.read(20))) 
-
-
-
-    return []
-
 def parse_root_file(uid,fd,cascreader):
     """Returns an array of format [TYPE, ID, CKEY, EXTRA...],
     Type = one of NAMED_FILE, ID_FILE, ID_INDEXED_FILE
@@ -354,14 +234,16 @@ def parse_root_file(uid,fd,cascreader):
     Extra = uid specific data 
         d3: extra is the "directory" that the file is in
     """
+    from PyCASC.rootfiles import parse_d3_root, parse_mndx_root, parse_warcraft3_root, parse_hearthstone_root
+
     if uid in ['hsb']:
-        return _parse_hearthstone_root(fd)
+        return parse_hearthstone_root(fd)
     elif uid in ["w3"]:
-        return _parse_warcraft3_root(fd)
+        return parse_warcraft3_root(fd)
     elif uid in ['d3']:
-        return _parse_d3_root(fd,cascreader)
+        return parse_d3_root(fd,cascreader)
     elif uid in ['hero','s2']:
-        return _parse_mndx_root(fd)
+        return parse_mndx_root(fd)
     else:
         with open(f"{uid}.rootfile","wb+") as f:
             f.write(fd)

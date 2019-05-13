@@ -11,7 +11,7 @@ setuptools.setup(
     long_description=long_description,
     # long_description_content_type="text/markdown",
     url="https://github.com/raidandfade/pycasc",
-    packages=["PyCASC","PyCASC.utils","PyCASC.utils.casc"],
+    packages=["PyCASC","PyCASC.utils","PyCASC.rootfiles"],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

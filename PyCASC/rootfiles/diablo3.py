@@ -1,7 +1,8 @@
 from io import BytesIO
 import struct
 import pathlib
-from PyCASC.utils.CASCUtils import read_cstr
+from PyCASC.utils.CASCUtils import read_cstr, NAMED_FILE, SNO_FILE, SNO_INDEXED_FILE
+from PyCASC.utils.blizzutils import byteskey_to_hex
 
 SNOGroups={
     # id : ( name , ext )
@@ -119,3 +120,77 @@ def _parse_d3_packages(pkfd):
         name_arr[p.stem]=p.parts[:-1]+(p.stem,p.suffix)
     print(f"Finished reading {len(name_arr)}/{numnames} names at {pf.tell()}")
     return name_arr
+
+
+def _parse_d3_root_entry(df,t):
+    ckey = byteskey_to_hex(df.read(16))
+    if t is SNO_FILE or t is SNO_INDEXED_FILE:
+        snoid,=struct.unpack("I",df.read(4))
+        if t is SNO_INDEXED_FILE:
+            findex,=struct.unpack("I",df.read(4))
+            return t,(snoid,findex),ckey
+        else:
+            return t,snoid,ckey
+    elif t is NAMED_FILE:
+        return t,read_cstr(df),ckey
+
+def parse_d3_root(fd,cr):
+    f = BytesIO(fd)
+    sig = f.read(4)
+    assert sig == b'\xc4\xd0\x07\x80'
+    count, = struct.unpack("I",f.read(4))
+    final_entries = []
+    sno_entries = []
+    dirs = []
+    for _ in range(count):
+        ckey=f.read(16)
+        name=read_cstr(f)
+        dirs.append((name,ckey))
+
+    for name,ckey in dirs:
+        ckey=byteskey_to_hex(ckey)
+        final_entries.append((NAMED_FILE,"_ROOTFILES/"+name,ckey))
+        dirfile = cr.get_file_by_ckey(ckey)
+        if dirfile is None:
+            continue
+        df = BytesIO(dirfile)
+        dfmagic = df.read(4)
+
+        snocount, = struct.unpack("I",df.read(4))
+        for _ in range(snocount):
+            e = _parse_d3_root_entry(df,SNO_FILE)+(name,)
+            sno_entries.append(e)
+        
+        snoidx_count, = struct.unpack("I",df.read(4))
+        for _ in range(snoidx_count):
+            e = _parse_d3_root_entry(df,SNO_INDEXED_FILE)+(name,)
+            sno_entries.append(e)
+
+        namecount, = struct.unpack("I",df.read(4))
+        for _ in range(namecount):
+            e = _parse_d3_root_entry(df,NAMED_FILE)+(name,)
+            final_entries.append(e) 
+            # add them directly to the final entries, since these are basically the final results for this type of entry
+    
+    coretoc_ckey = [c for c in final_entries if c[1]=="CoreTOC.dat"][0][2]
+    sno_table = _parse_d3_coretoc(cr.get_file_by_ckey(coretoc_ckey)) # snid : (name,sngrp,grpnm,grpext)
+
+    packages_ckey = [c for c in final_entries if c[1]=="Data_D3\\PC\\Misc\\Packages.dat"][0][2]
+    pkg_table = _parse_d3_packages(cr.get_file_by_ckey(packages_ckey)) # fn : (fpath,fname,fext)
+
+    for sf in sno_entries:
+        if sf[0]==SNO_FILE:
+            if sf[1] in sno_table: # if this file is in the sno_table, then we know it's name
+                sfn = sno_table[sf[1]]
+                final_entries.append((NAMED_FILE,f"{sfn[2]}/{sfn[0]}.{sfn[3]}",sf[2]))
+            else: # otherwise, we dont know the name.
+                final_entries.append((SNO_FILE,sf[1],sf[2]))
+        else: # sf is SNO_INDEXED_FILE
+            if sf[1][0] in sno_table: # if this file is in the sno_table, then we know it's name
+                sfn = sno_table[sf[1][0]]
+                pkg = pkg_table[sfn[0]]
+                final_entries.append((NAMED_FILE,f"{sfn[2]}/{pkg[1]}/{sf[1][1]:05d}{pkg[-1]}",sf[2]))
+            else: # otherwise, we dont know the name.
+                final_entries.append((SNO_INDEXED_FILE,sf[1],sf[2]))
+
+    return final_entries
