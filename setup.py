@@ -4,7 +4,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='PyCASC',  
-    version='0.0.1',
+    version='0.0.2',
     author="raidandfade",
     author_email="business@gocode.it",
     description="Pure Python CASC file structure reader",

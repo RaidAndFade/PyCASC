@@ -1,1 +1,2 @@
 v0.0.1, 2019-05-06 -- Not even a release
+v0.0.2, 2019-05-13 -- Still heavy ALPHA stages. Now support reading from CDN. Added support for D3 and HS. Work begun on HOTS/SC2.
