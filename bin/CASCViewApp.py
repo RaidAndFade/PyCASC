@@ -11,6 +11,9 @@ from widgets.HexViewWidget import HexViewWidget
 from widgets.SaveFileWidget import SaveFileWidget
 import webbrowser
 
+# (Product Name, TACT-ID)
+SUPPORTED_CDN = [("Diablo 3","d3"),("Hearthstone","hsb"),("Warcraft III", "w3")]
+
 class TableFolderItem(QTableWidgetItem):
     def __init__(self, text, is_folder=False, is_back_button=False, file_data=None):
         QTableWidgetItem.__init__(self,text)
@@ -60,6 +63,7 @@ class CascViewApp(QMainWindow):
         self.populateTable()
 
     def load_casc_cdn(self, product):
+        print(f"Loading {product}")
         self.CASCReader = CDNCASCReader(product,read_install_file=True)
         self.files = self.CASCReader.list_files()
         self.unknown_files = self.CASCReader.list_unnamed_files()
@@ -79,10 +83,13 @@ class CascViewApp(QMainWindow):
                 toptree = toptree['folders'][sp]
             toptree['files'][path[-1]]=f
 
-        ftree['folders']['_UNNAMED'] = {'folders':{},'files':{}}
-        uktree = ftree['folders']['_UNNAMED']
+       
+        uktree = {'folders':{},'files':{}}
         for f in self.unknown_files:
             uktree['files'][f"{f[0]:x}"]=f
+
+        if len(uktree['files']) > 0:
+            ftree['folders']['_UNNAMED'] = uktree
 
         return ftree
         
@@ -102,16 +109,15 @@ class CascViewApp(QMainWindow):
         self.main_widget.setLayout(self.layout)
         self.setCentralWidget(self.main_widget)
 
-        extractAction = QAction("&", self)
-        extractAction.setShortcut("Ctrl+Q")
-        extractAction.setStatusTip('Leave The App')
-        # extractAction.triggered.connect(self.close_application)
-
-        # self.statusBar()
-
         mainMenu = self.menuBar()
         fileMenu = mainMenu.addMenu('&File')
-        fileMenu.addAction(extractAction)
+        cdnMenu = fileMenu.addMenu("&Load from CDN")
+
+        for c in SUPPORTED_CDN:
+            caction = QAction(c[0],self)
+            caction.val = c[1]
+            caction.triggered.connect(lambda: self.load_casc_cdn(self.sender().val))
+            cdnMenu.addAction(caction)
 
         # Show widget
         self.show()
@@ -312,5 +318,5 @@ if __name__ == '__main__':
 
     # ex.load_casc_dir("/Users/sepehr/Diablo III") #Diablo 3
     # ex.load_casc_dir("/Applications/Warcraft III") #War3
-    ex.load_casc_cdn("d3")
+    # ex.load_casc_cdn("d3")
     sys.exit(app.exec_())   
