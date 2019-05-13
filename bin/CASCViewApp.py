@@ -123,7 +123,7 @@ class CascViewApp(QMainWindow):
             dest = QFileDialog.getExistingDirectory(self, f"Select your game directory (WoW, WC3, D3, etc)", os.getcwd())
             try:
                 self.load_casc_dir(dest)
-            except e:
+            except Exception as e:
                 print(e)
 
         fileMenu.addAction("&Open Local Folder", choose_and_load_from_dir)
