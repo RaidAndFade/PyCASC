@@ -93,11 +93,6 @@ def parse_install_file(fd):
         e.tags = [t.name for t in tags if x in t.flags]
         files.append(e)
 
-    with open("infl","w+") as n:
-        for x in range(len(files)):
-            ine = files[x]
-            n.write(str(ine.name)+" : "+str(ine.tags)+"\n")
-
     return files
 
 class DLEntry:
@@ -117,8 +112,6 @@ def parse_download_file(fd):
     mask_len = (file_num + 7) // 8
 
     dl_entries = []
-
-    print(file_num)
 
     for x in range(file_num):
         ck = f.read(16) # hash
@@ -143,13 +136,6 @@ def parse_download_file(fd):
                 # print(f"[{tagname}] {bd:b} & {2**z:b}? ({y*8+z})")
                 if y*8+z < len(dl_entries) and (bd & (2 ** z)) > 0:
                     dl_entries[y*8+z-1].tags.append(tagname)
-
-    # assert 1+1==4
-
-    with open("dlfl","w+") as n:
-        for x in range(len(dl_entries)):
-            dle = dl_entries[x]
-            n.write(str(x)+" : "+str(dle.tags)+"\n")
     
     return dl_entries
 
