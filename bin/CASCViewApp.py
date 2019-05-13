@@ -44,17 +44,23 @@ class CascViewApp(QMainWindow):
         self.width = 700
         self.height = 500
 
-        self.CASCReader=None
-        self.files=[]
-        self.unknown_files=[]
-        self.filetree=self.genFileTree()
-        self.curPath=[]
+        self.load_empty_table()
         self.openWidgets=[]
         self.isCDN=False
 
         self.initUI()
 
+    def load_empty_table(self):
+        self.CASCReader=None
+        self.files=[]
+        self.unknown_files=[]
+        self.filetree=self.genFileTree()
+        self.curPath=[]
+
     def load_casc_dir(self, d):
+        self.load_empty_table()
+        self.populateTable()
+
         self.CASCReader = DirCASCReader(d)
         self.files = self.CASCReader.list_files()
         self.unknown_files = self.CASCReader.list_unnamed_files()
@@ -63,7 +69,9 @@ class CascViewApp(QMainWindow):
         self.populateTable()
 
     def load_casc_cdn(self, product):
-        print(f"Loading {product}")
+        self.load_empty_table()
+        self.populateTable()
+
         self.CASCReader = CDNCASCReader(product,read_install_file=True)
         self.files = self.CASCReader.list_files()
         self.unknown_files = self.CASCReader.list_unnamed_files()
@@ -111,10 +119,18 @@ class CascViewApp(QMainWindow):
 
         mainMenu = self.menuBar()
         fileMenu = mainMenu.addMenu('&File')
-        cdnMenu = fileMenu.addMenu("&Load from CDN")
+        def choose_and_load_from_dir():
+            dest = QFileDialog.getExistingDirectory(self, f"Select your game directory (WoW, WC3, D3, etc)", os.getcwd())
+            try:
+                self.load_casc_dir(dest)
+            except e:
+                print(e)
 
+        fileMenu.addAction("&Open Local Folder", choose_and_load_from_dir)
+
+        cdnMenu = fileMenu.addMenu("&Load from CDN")
         for c in SUPPORTED_CDN:
-            caction = QAction(c[0],self)
+            caction = QAction("&"+c[0],self)
             caction.val = c[1]
             caction.triggered.connect(lambda: self.load_casc_cdn(self.sender().val))
             cdnMenu.addAction(caction)
