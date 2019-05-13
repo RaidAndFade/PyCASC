@@ -101,7 +101,12 @@ class CASCReader:
     file_table:Dict[int,FileInfo]
     file_translate_table:Dict[int,tuple]
 
-    def __init__(self):
+    def __init__(self, read_install_file=True):
+        if read_install_file:
+            ine = parse_install_file(self.get_file_by_ckey(self.install_ckey))
+            for x in ine:
+                self.file_translate_table.append((NAMED_FILE,x.name,f"{x.md5:x}"))
+
         for ckey in self.ckey_map:
             first_ekey = self.ckey_map[ckey]
             if first_ekey in self.file_table:
@@ -169,7 +174,7 @@ from PyCASC.launcher import getProductCDNFile, getProductVersions, isCDNFileCach
 from PyCASC.utils.blizzutils import parse_build_config
 from PyCASC.utils.CASCUtils import parse_blte
 class CDNCASCReader(CASCReader):
-    def __init__(self, product, region="us", read_download_file=False, read_install_file=False):
+    def __init__(self, product, region="us", read_install_file=False):
         self.product = product
 
         vrs = [x for x in getProductVersions(product) if x['Region']==region]
@@ -198,12 +203,13 @@ class CDNCASCReader(CASCReader):
             except AssertionError as e:
                 print("archive index file " + a + " did not match assertions, ignoring this for now since it only causes minor issues.")
                 # raise e
+                
         print(f"[ETBL] {len(self.file_table)}")
 
         self.uid = self.build_config['build-uid']
         root_ckey = self.build_config['root']
         enc_hash1,enc_ekey = self.build_config['encoding'].split()
-        inst_hash1,_ = self.build_config['install'].split()
+        self.install_ckey,_ = self.build_config['install'].split()
         download_hash1,_ = self.build_config['download'].split()
         size_hash1,_ = self.build_config['size'].split()
 
@@ -217,23 +223,15 @@ class CDNCASCReader(CASCReader):
         self.file_translate_table = parse_root_file(self.uid,root_file,self) # maps some ID(can be filedataid, path, whatever) -> ckey
         print(f"[FTTBL] {len(self.file_translate_table)}")
 
-        if read_download_file:
-            dle = parse_download_file(self.get_file_by_ckey(download_hash1))
-
-        if read_install_file:
-            ine = parse_install_file(self.get_file_by_ckey(inst_hash1))
-            for x in ine:
-                self.file_translate_table.append((NAMED_FILE,x.name,f"{x.md5:x}"))
-
         self.file_translate_table.append((NAMED_FILE,"_ROOT",root_ckey))
         
         self.ckey_map[int(enc_hash1,16)] = int(enc_ekey,16) # map the encoding file's ckey to its own ekey on the ckey-ekey map, since it appears to not be included in the enc-table
         self.file_translate_table.append((NAMED_FILE,"_ENCODING",enc_hash1))
-        self.file_translate_table.append((NAMED_FILE,"_INSTALL",inst_hash1))
+        self.file_translate_table.append((NAMED_FILE,"_INSTALL",self.install_ckey))
         self.file_translate_table.append((NAMED_FILE,"_DOWNLOAD",download_hash1))
         self.file_translate_table.append((NAMED_FILE,"_SIZE",size_hash1))
 
-        CASCReader.__init__(self)
+        CASCReader.__init__(self, read_install_file)
 
     # def list_files(self):
     #     files=[]
@@ -338,7 +336,7 @@ class CDNCASCReader(CASCReader):
                 return isCDNFileCached(self.product,ekey,cache_dur=3600*24*10)
 
 class DirCASCReader(CASCReader):
-    def __init__(self,path):
+    def __init__(self,path,read_install_file=True):
         if not os.path.exists(path+"/.build.info") or not os.path.exists(path+"/Data/data"):
             raise Exception("Not a valid CASC datapath")
         self.path = path
@@ -357,7 +355,7 @@ class DirCASCReader(CASCReader):
         self.uid = self.build_config['build-uid']
         root_ckey = self.build_config['root']
         enc_hash1,enc_hash2 = self.build_config['encoding'].split()
-        inst_hash1,_ = self.build_config['install'].split()
+        self.install_ckey,_ = self.build_config['install'].split()
         download_hash1,_ = self.build_config['download'].split()
         size_hash1,_ = self.build_config['size'].split()
 
@@ -389,11 +387,11 @@ class DirCASCReader(CASCReader):
         
         self.ckey_map[int(enc_hash1,16)] = int(enc_hash2[:18],16) # map the encoding file's ckey to its own ekey on the ckey-ekey map, since it appears to not be included in the enc-table
         self.file_translate_table.append((NAMED_FILE,"_ENCODING",enc_hash1))
-        self.file_translate_table.append((NAMED_FILE,"_INSTALL",inst_hash1))
+        self.file_translate_table.append((NAMED_FILE,"_INSTALL",self.install_ckey))
         self.file_translate_table.append((NAMED_FILE,"_DOWNLOAD",download_hash1))
         self.file_translate_table.append((NAMED_FILE,"_SIZE",size_hash1))
 
-        CASCReader.__init__(self)
+        CASCReader.__init__(self, read_install_file)
         
     def get_file_size_by_ckey(self,ckey):
         finfo = self.get_file_info_by_ckey(ckey)
