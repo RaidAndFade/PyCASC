@@ -1,5 +1,6 @@
 export
 cache
+build
 __pycache__
 PyCASC.egg-info
 dist

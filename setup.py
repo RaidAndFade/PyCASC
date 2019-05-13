@@ -9,7 +9,7 @@ setuptools.setup(
     author_email="business@gocode.it",
     description="Pure Python CASC file structure reader",
     long_description=long_description,
-    long_description_content_type="text/markdown",
+    # long_description_content_type="text/markdown",
     url="https://github.com/raidandfade/pycasc",
     packages=["PyCASC","PyCASC.utils","PyCASC.utils.casc"],
     classifiers=[
