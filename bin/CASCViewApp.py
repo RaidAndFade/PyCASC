@@ -60,7 +60,7 @@ class CascViewApp(QMainWindow):
         self.populateTable()
 
     def load_casc_cdn(self, product):
-        self.CASCReader = CDNCASCReader(product)
+        self.CASCReader = CDNCASCReader(product,read_install_file=True)
         self.files = self.CASCReader.list_files()
         self.unknown_files = self.CASCReader.list_unnamed_files()
         self.filetree = self.genFileTree()
@@ -312,5 +312,5 @@ if __name__ == '__main__':
 
     # ex.load_casc_dir("/Users/sepehr/Diablo III") #Diablo 3
     # ex.load_casc_dir("/Applications/Warcraft III") #War3
-    ex.load_casc_cdn("hsb")
+    ex.load_casc_cdn("d3")
     sys.exit(app.exec_())   
