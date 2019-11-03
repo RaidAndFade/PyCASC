@@ -1,6 +1,6 @@
 import sys, os
-from PyQt5.QtWidgets import QMainWindow, QApplication, QWidget, QProgressBar, QAction, QTableWidget,QTableWidgetItem, QGridLayout, QHeaderView, QAbstractItemView, QTextEdit, QHBoxLayout, QMenu, QFileDialog
-from PyQt5.QtGui import QIcon, QFont, QDrag, QPixmap, QPainter
+from PyQt5.QtWidgets import QMainWindow, QApplication, QWidget, QProgressBar, QAction, QTableView, QTableWidget,QTableWidgetItem, QGridLayout, QHeaderView, QAbstractItemView, QTextEdit, QHBoxLayout, QMenu, QFileDialog
+from PyQt5.QtGui import QIcon, QFont, QDrag, QPixmap, QPainter, QColor, QBrush
 from PyQt5.QtCore import pyqtSlot, Qt, QBuffer, QByteArray, QUrl, QMimeData, pyqtSignal
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 from PyQt5.QtMultimediaWidgets import QVideoWidget
@@ -11,15 +11,26 @@ from widgets.HexViewWidget import HexViewWidget
 from widgets.SaveFileWidget import SaveFileWidget
 import webbrowser
 
+
 # (Product Name, TACT-ID)
 SUPPORTED_CDN = [("Diablo 3","d3"),("Hearthstone","hsb"),("Warcraft III", "w3")]
 
-class TableFolderItem(QTableWidgetItem):
-    def __init__(self, text, is_folder=False, is_back_button=False, file_data=None):
-        QTableWidgetItem.__init__(self,text)
+class TableFolderItem(object):
+    def __init__(self, text, parent, is_folder=False, is_back_button=False, file_data=None):
+        self.text = text
         self.is_folder = is_folder
         self.is_back_button = is_back_button
         self.file_data = file_data
+        self.parent = parent
+
+    def color(self):
+        if self.file_data != None:
+            if not self.parent.CASCReader.is_file_fetchable(self.file_data[1],include_cdn=False):
+                # if it's NOT locally fetchable, then it needs to be fetched.
+                return QBrush(QColor(200, 200, 200))
+
+    # def __ge__(self, other):
+        # return not self.__lt__(other)
 
     def __lt__(self, other):
         if self.is_back_button:
@@ -31,10 +42,43 @@ class TableFolderItem(QTableWidgetItem):
         elif other.is_folder and not self.is_folder:
             return False
         else:
-            return super(TableFolderItem, self).__lt__(other)
+            return self.text < other.text
 
-class FileTableWidget(QTableWidget):
-    pass #a dream that will never happen (drag-drop out)
+class FileTableModel(QtCore.QAbstractTableModel):
+    def __init__(self, data, parent=None):
+        super(FileTableModel, self).__init__(parent)
+        self._data = data
+
+    def appendRow(self,w:QTableWidget):
+        self._data.append(w)
+
+    def rowCount(self, parent=None):
+        return len(self._data)
+
+    def columnCount(self, parent=None):
+        return 1
+
+    def sort(self, order, d):
+        self._data = sorted(self._data)
+
+    def data(self, index, role=QtCore.Qt.DisplayRole):
+        if role == QtCore.Qt.DisplayRole:
+            row = index.row()
+            if 0 <= row < self.rowCount():
+                return self._data[row].text
+        elif role == QtCore.Qt.ForegroundRole:
+            row = index.row()
+            if 0 <= row < self.rowCount():
+                return self._data[row].color()
+
+class FileTableWidget(QTableView):
+    def __init__(self,parent):
+        self.parent_obj = parent
+        super(FileTableWidget, self).__init__(parent)
+
+    def selectionChanged(self, selected, deselected):
+        self.parent_obj.on_click(None)
+        # print(selected,deselected)
 
 class CascViewApp(QMainWindow):
 
@@ -97,7 +141,7 @@ class CascViewApp(QMainWindow):
             uktree['files'][f"{f[0]:x}"]=f
 
         if len(uktree['files']) > 0:
-            ftree['folders']['_UNNAMED'] = uktree
+            ftree['folders']['!UNNAMED'] = uktree
 
         return ftree
         
@@ -142,32 +186,41 @@ class CascViewApp(QMainWindow):
         curDir = self.filetree
         for x in self.curPath:
             curDir = curDir['folders'][x]
+
+        self.fileTable.setSortingEnabled(False)
+
+
+        model = self.fileTable.model()
+        if model is not None:
+            self.fileTable.setModel(None)
+            model.deleteLater()
+
+        self.tableModel = FileTableModel([],self.fileTable)
     
-        for x in range(self.fileTable.rowCount()):
-            self.fileTable.removeRow(0)
+        # for x in range(self.fileTable.rowCount()):
+        #     self.fileTable.removeRow(0)
 
         if self.curPath != []:
-            self.fileTable.insertRow(self.fileTable.rowCount())
-            self.fileTable.setItem(self.fileTable.rowCount()-1, 0, TableFolderItem("..",is_folder=True,is_back_button=True))
+            self.tableModel.appendRow(TableFolderItem("..",self,is_folder=True,is_back_button=True))
 
         for f in curDir['files']:
-            self.fileTable.insertRow(self.fileTable.rowCount())
-            self.fileTable.setItem(self.fileTable.rowCount()-1, 0, TableFolderItem(f,file_data=curDir['files'][f]))
+            self.tableModel.appendRow(TableFolderItem(f,self,file_data=curDir['files'][f]))
 
         for f in curDir['folders']:
-            self.fileTable.insertRow(self.fileTable.rowCount())
-            self.fileTable.setItem(self.fileTable.rowCount()-1, 0, TableFolderItem("📁"+f,is_folder=True))
+            self.tableModel.appendRow(TableFolderItem("📁"+f,self,is_folder=True))
             
+        self.fileTable.setModel(self.tableModel)
+        self.fileTable.setSortingEnabled(True)
         self.fileTable.sortByColumn(0,0)
         self.fileTable.scrollToTop()
 
     def createTables(self):
         # Create tables
-        self.fileTable = FileTableWidget()
+        self.fileTable = FileTableWidget(self)
         # print(self.fileTable.styleSheet())
         # self.fileTable.setStyleSheet("border:0px")
         self.fileTable.setShowGrid(False)
-        self.fileTable.setColumnCount(1)
+        # self.fileTable.setColumnCount(1)
         self.fileTable.verticalHeader().hide()
         self.fileTable.setEditTriggers(QTableWidget.NoEditTriggers)
         # self.fileTable.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -176,7 +229,7 @@ class CascViewApp(QMainWindow):
         # self.fileTable.setDropIndicatorShown(True)
 
         header = self.fileTable.horizontalHeader()       
-        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        header.setSectionResizeMode(QHeaderView.Stretch)
         header.hide()
 
         self.populateTable()        
@@ -204,9 +257,8 @@ class CascViewApp(QMainWindow):
         # table selection change
         self.fileTable.setContextMenuPolicy(Qt.CustomContextMenu)
         self.fileTable.customContextMenuRequested.connect(self.on_right_click)
-        self.fileTable.cellClicked.connect(self.on_click)
-        self.fileTable.cellDoubleClicked.connect(self.on_dbl_click)
-        self.fileTable.itemSelectionChanged.connect(self.on_change)
+        self.fileTable.clicked.connect(self.on_click)
+        self.fileTable.doubleClicked.connect(self.on_dbl_click)
     
     def keyReleaseEvent(self, e):
         QMainWindow.keyReleaseEvent(self, e)
@@ -218,13 +270,14 @@ class CascViewApp(QMainWindow):
         pPos=parent.mapToGlobal(QtCore.QPoint(0, 0))
         mPos=pPos+QPos
         self.rcMenu=QMenu(self)
-        sitems=[x for x in self.fileTable.selectedItems() if not x.is_back_button]
+        item_indexs=[x for x in self.fileTable.selectedIndexes()]
+        sitems=[self.fileTable.model()._data[x.row()] for x in item_indexs]
         if len(sitems)>1:
             self.rcMenu.addAction('Export files').triggered.connect(lambda:self.save_items(sitems))
         else:
-            item=self.fileTable.itemAt(QPos)
+            item=sitems[-1]
             if item.is_folder:
-                self.rcMenu.addAction("Open Folder").triggered.connect(lambda:self.on_dbl_click(item.row(),item.column()))
+                self.rcMenu.addAction("Open Folder").triggered.connect(lambda:self.on_dbl_click(item_indexs[-1]))
                 self.rcMenu.addAction('Export folder').triggered.connect(lambda:self.save_items([item]))
             else:
                 self.rcMenu.addAction('View File (Autodetect)').triggered.connect(lambda:self.show_hexview_for_item(item))
@@ -240,7 +293,7 @@ class CascViewApp(QMainWindow):
             curDir = curDir['folders'][x]
         folder={'folders':{},'files':{}}
         for x in items:
-            n=x.text()
+            n=x.text
             if x.is_folder:
                 if x.is_back_button: continue
                 folder['folders'][n[1:]]=curDir['folders'][n[1:]]
@@ -248,18 +301,15 @@ class CascViewApp(QMainWindow):
                 folder['files'][n]=curDir['files'][n]
         w = SaveFileWidget(folder,dest,self)
         self.openWidgets.append(w)
-        
-    #reverse onchange and onclick so that i dont need to pass bullshit arguments lol
-    def on_change(self):
-        self.on_click(-1,-1)
-
-    def on_click(self, row, column):
-        item = self.fileTable.selectedItems()
+    
+    def on_click(self, index):
+        # row,column = index.row(),index.column()
+        item = self.fileTable.selectedIndexes()
         if len(item)<1:
             return
-        item=item[0]
+        item=self.fileTable.model()._data[item[0].row()]
         if not item.is_folder:
-            self.infoTable.item(0,0).setText("File: "+item.text())
+            self.infoTable.item(0,0).setText("File: "+item.text)
             if self.CASCReader.is_file_fetchable(item.file_data[1],include_cdn=False): 
                 # if its fetchable without cdn, it's local. It can't not be fetchable at this 
                 #  point since only fetchable files are on the file list.
@@ -283,22 +333,22 @@ class CascViewApp(QMainWindow):
                 self.infoTable.item(1,0).setText("")
             else:
                 curDir = self.filetree
-                for x in self.curPath+[item.text()[1:]]:
+                for x in self.curPath+[item.text[1:]]:
                     curDir = curDir['folders'][x]
-                self.infoTable.item(0,0).setText("Folder: "+item.text()[1:])
+                self.infoTable.item(0,0).setText("Folder: "+item.text[1:])
                 self.infoTable.item(1,0).setText(f"Items: {len(curDir['files'])+len(curDir['folders'])}")
 
-    def on_dbl_click(self, row, column):
+    def on_dbl_click(self, index):
         #enter directory, do nothing if it's a file
-        item = self.fileTable.selectedItems()
+        item = self.fileTable.selectedIndexes()
         if len(item)<1:
             return
-        item = item[0]
+        item=self.fileTable.model()._data[item[0].row()]
         if item.is_folder:
             if item.is_back_button:
                 self.curPath.pop()
             else:
-                self.curPath.append(item.text()[1:])
+                self.curPath.append(item.text[1:])
             self.populateTable()
         else:
             self.show_hexview_for_item(item)
@@ -309,7 +359,7 @@ class CascViewApp(QMainWindow):
         data = self.CASCReader.get_file_by_ckey(ckey,8*1024) # load 8k
         
         w = HexViewWidget(self)
-        w.viewFile(item.text(),data,size,force_type)
+        w.viewFile(item.text,data,size,force_type)
         self.openWidgets.append(w)
 
     def sub_widget_closed(self,w):
@@ -334,5 +384,5 @@ if __name__ == '__main__':
 
     # ex.load_casc_dir("/Users/sepehr/Diablo III") #Diablo 3
     # ex.load_casc_dir("/Applications/Warcraft III") #War3
-    # ex.load_casc_cdn("d3")
-    sys.exit(app.exec_())   
+    ex.load_casc_cdn("wow")
+    sys.exit(app.exec_())
