@@ -1,6 +1,7 @@
 import struct
 from io import BytesIO
 from typing import List
+from PyCASC import TACT_KEYS
 from PyCASC.utils.blizzutils import byteskey_to_hex, var_int
 
 def beautify_filesize(i):
@@ -165,6 +166,23 @@ def _r_casc_bltechunk(f,ci):
     elif etype==b"Z":
         import zlib
         return zlib.decompress(f.read(ci[0]-1 if ci[1]>0 else -1))
+    elif etype==b"E":
+        keyname_len = var_int(f,1)
+        keyname = f.read(keyname_len)
+        iv_len = var_int(f,1)
+        iv = f.read(iv_len)
+        ktype = f.read(1)
+        data = f.read(ci[0]-1-keyname_len-1-iv_len-1-1)
+
+        retdata = b''
+        if keyname in TACT_KEYS:
+            key = TACT_KEYS[keyname]
+            try:
+                import salsa20
+                retdata = salsa20.Salsa20_xor(data,iv,key)
+            except:
+                print("Attempted to use salsa20 package to extract encrypted data, but it was not installed")
+        return retdata
     else:
         raise Exception(f"Fuck you {etype} encoding")
 
@@ -226,6 +244,9 @@ def read_cstr(f):
 SNO_FILE=0
 SNO_INDEXED_FILE=1
 NAMED_FILE=2
+WOW_HASHED_FILE=3
+WOW_DATAID_FILE=4
+
 def parse_root_file(uid,fd,cascreader):
     """Returns an array of format [TYPE, ID, CKEY, EXTRA...],
     Type = one of NAMED_FILE, ID_FILE, ID_INDEXED_FILE
@@ -234,7 +255,7 @@ def parse_root_file(uid,fd,cascreader):
     Extra = uid specific data 
         d3: extra is the "directory" that the file is in
     """
-    from PyCASC.rootfiles import parse_d3_root, parse_mndx_root, parse_warcraft3_root, parse_hearthstone_root
+    from PyCASC.rootfiles import parse_d3_root, parse_wow_root, parse_mndx_root, parse_warcraft3_root, parse_hearthstone_root, parse_ow_root
 
     if uid in ['hsb']:
         return parse_hearthstone_root(fd)
@@ -244,6 +265,10 @@ def parse_root_file(uid,fd,cascreader):
         return parse_d3_root(fd,cascreader)
     elif uid in ['hero','s2']:
         return parse_mndx_root(fd)
+    elif uid in ['pro']:
+        return parse_ow_root(fd)
+    elif uid in ['wow']:
+        return parse_wow_root(fd)
     else:
         with open(f"{uid}.rootfile","wb+") as f:
             f.write(fd)
