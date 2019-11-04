@@ -4,12 +4,12 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='PyCASC',  
-    version='0.0.2',
+    version='0.1.0',
     author="raidandfade",
     author_email="business@gocode.it",
     description="Pure Python CASC file structure reader",
     long_description=long_description,
-    # long_description_content_type="text/markdown",
+    long_description_content_type="text/markdown",
     url="https://github.com/raidandfade/pycasc",
     packages=["PyCASC","PyCASC.utils","PyCASC.rootfiles"],
     classifiers=[
