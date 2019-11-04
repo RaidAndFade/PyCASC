@@ -1,21 +1,42 @@
 import os
 import struct
+import pickle
 from io import BytesIO
 from typing import Union, Dict
 
 CACHE_DURATION = 3600
-CACHE_DIRECTORY = os.path.join(os.getcwd(),"cache")
+# CACHE_DIRECTORY = os.path.join(os.getcwd(),"cache")
+# CACHE_DIRECTORY = "/Volumes/USB2/pycasccache/"
+CACHE_DIRECTORY = "/Volumes/Secure/pycasc"
 
-from PyCASC.utils.blizzutils import var_int,have_cached,get_cdn_url,jenkins_hash,parse_build_config,parse_config,prefix_hash,hexkey_to_bytes,byteskey_to_hex
-from PyCASC.utils.CASCUtils import parse_encoding_file,parse_install_file,parse_download_file,parse_root_file,r_cascfile,cascfile_size, NAMED_FILE,SNO_FILE,SNO_INDEXED_FILE
+LISTFILE = (os.path.join(os.getcwd(),"listfiles","wow-82.txt"),"82")
+
+TACT_KEYS = {} # dict of name:key, populated automatically for some games.
+
+from PyCASC.utils.blizzutils import var_int,have_cached,get_cdn_url,hashlittle2,parse_build_config,parse_config,prefix_hash,hexkey_to_bytes,byteskey_to_hex
+from PyCASC.utils.CASCUtils import parse_encoding_file,parse_install_file,parse_download_file,parse_root_file,r_cascfile,cascfile_size, NAMED_FILE,SNO_FILE,SNO_INDEXED_FILE,WOW_HASHED_FILE,WOW_DATAID_FILE
 
 
-def prep_listfile(fp):
+def prep_6x_listfile(fp):
     names={}
+    if os.path.exists(os.path.join(fp,".pkl")):
+        return pickle.load(open(fp+".pkl",'rb'))
     with open(fp,"r") as f:
         for x in f.readlines():
             x=x.strip()
-            names[jenkins_hash(x)]=x
+            x=x.upper()
+            x=x.replace("/","\\")
+            hsha,hshb = hashlittle2(x)
+            names[hsha<<20 | hshb]=x
+    pickle.dump(names, open(fp+".pkl",'wb+'))
+    return names
+
+def prep_82_listfile(fp):
+    names={}
+    with open(fp,"r") as f:
+        for x in f.readlines():
+            i,f = x.split(";",2)
+            names[int(i)]=f.strip()
     return names
 
 class FileInfo:
@@ -27,6 +48,7 @@ class FileInfo:
     uncompressed_size:int
     chunk_count:int
     name:str
+    extras:dict
     
 def r_idx(fp):
     ents=[]
@@ -98,6 +120,7 @@ def r_cidx(df):
 
 class CASCReader:
     ckey_map:Dict[int,int]
+    listed_files:Dict[int,bytes]
     file_table:Dict[int,FileInfo]
     file_translate_table:Dict[int,tuple]
 
@@ -114,12 +137,22 @@ class CASCReader:
                 fi.ckey = ckey
 
         for x in self.file_translate_table:
-            ckey=int(x[2],16)
+            if isinstance(x[2],bytes):
+                ckey = int.from_bytes(x[2],byteorder='big')
+            else:
+                ckey = int(x[2],16)
             fi = self.get_file_info_by_ckey(ckey)
             if fi is None:
                 continue
             if x[0] is NAMED_FILE:
                 fi.name=x[1]
+            elif x[0] is WOW_DATAID_FILE:
+                fi.extras = {"data_id": x[1]}
+                if self.listed_files is not None:
+                    if x[1] in self.listed_files:
+                        fi.name = self.listed_files[x[1]] 
+                    else:
+                        fi.name = "FILE_BY_ID/"+str(x[1])
 
     def get_name(self,ckey):
         fi = self.get_file_info_by_ckey(ckey)
@@ -231,7 +264,22 @@ class CDNCASCReader(CASCReader):
         self.file_translate_table.append((NAMED_FILE,"_DOWNLOAD",download_hash1))
         self.file_translate_table.append((NAMED_FILE,"_SIZE",size_hash1))
 
+        if product == "wow":
+            if LISTFILE[1] == "82":
+                self.listed_files = prep_82_listfile(LISTFILE[0])
+            else:
+                self.listed_files = prep_6x_listfile(LISTFILE[0])
+                
         CASCReader.__init__(self, read_install_file)
+
+        if product == "wow":
+            tk_list = []
+            tk_lookup = []
+            for x in self.listed_files:
+                if self.listed_files[x].lower() == "dbfilesclient/tactkey.db2":
+                    pass
+                elif self.listed_files[x].lower() == "dbfilesclient/tactkeylookup.db2":
+                    pass
 
     # def list_files(self):
     #     files=[]
@@ -267,7 +315,6 @@ class CDNCASCReader(CASCReader):
         else:
             if ckey not in self.ckey_map:
                 return None
-
             fi = FileInfo()
             fi.ckey = ckey
             fi.ekey = self.ckey_map[ckey]
@@ -278,8 +325,8 @@ class CDNCASCReader(CASCReader):
         from requests.exceptions import HTTPError
         if hasattr(finfo,"data_file") and finfo.data_file is not None:
             # archives never expire
-            archive_file = getProductCDNFile(self.product,finfo.data_file,cache_dur=-1)
-            return parse_blte(archive_file[finfo.offset:finfo.offset+finfo.compressed_size])
+            archive_file = getProductCDNFile(self.product,finfo.data_file,cache_dur=-1,offset=finfo.offset,size=finfo.compressed_size)
+            return parse_blte(archive_file) #[finfo.offset:finfo.offset+finfo.compressed_size]
         else:
             ekey = f"{finfo.ekey:032x}"
             # print(ekey,f"{finfo.ckey:032x}")
@@ -449,7 +496,6 @@ if __name__ == '__main__':
 
     # hero is mndx, same with s2
     cr = CDNCASCReader("s2")
-
     print(f"{len(cr.list_files())} named files loaded in list")
 
     pr.disable()
