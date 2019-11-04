@@ -389,7 +389,6 @@ if __name__ == '__main__':
     # ex.load_casc_dir("G:/Misc Games/Warcraft III")
     # ex.load_casc_dir("G:/Misc Games/Diablo III") 
 
-    # ex.load_casc_dir("/Users/sepehr/Diablo III") #Diablo 3
     # ex.load_casc_dir("/Applications/Warcraft III") #War3
     ex.load_casc_cdn("wow")
     sys.exit(app.exec_())

@@ -281,25 +281,6 @@ class CDNCASCReader(CASCReader):
                 elif self.listed_files[x].lower() == "dbfilesclient/tactkeylookup.db2":
                     pass
 
-    # def list_files(self):
-    #     files=[]
-    #     for x in self.file_translate_table:
-    #         if x[0] == NAMED_FILE:
-    #             files.append((x[1],x[2]))
-    #     return files
-
-    # def list_unnamed_files(self):
-    #     files=[]
-    #     for x in self.ckey_map:
-    #         knwn = False
-    #         for y in self.file_translate_table:
-    #             if x == y[2]:
-    #                 knwn=True
-    #                 break
-    #         if not knwn:
-    #             files.append((x,x))
-    #     return files
-
     def get_file_info_by_ckey(self, ckey):
         if isinstance(ckey,str):
             ckey=int(ckey,16)
@@ -486,7 +467,7 @@ if __name__ == '__main__':
     # cr = DirCASCReader("G:/Misc Games/Warcraft III") # War 3
     # cr = DirCASCReader("G:/Misc Games/Diablo III") # Diablo 3
     # On my mac, these are the paths:
-    # cr = DirCASCReader("/Users/sepehr/Diablo III") #Diablo 3
+    # cr = DirCASCReader("/Users/raid/Diablo III") #Diablo 3
     # cr = DirCASCReader("/Applications/Warcraft III") # War 3
 
     # war3, diablo3, hots, sc2,  ow, hearthstone, wow,  wowclassic,
@@ -495,7 +476,7 @@ if __name__ == '__main__':
     # supposedly supported: w3, d3
 
     # hero is mndx, same with s2
-    cr = CDNCASCReader("s2")
+    cr = CDNCASCReader("s2") # Read s2 CASC dir from CDN.
     print(f"{len(cr.list_files())} named files loaded in list")
 
     pr.disable()
