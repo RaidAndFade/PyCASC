@@ -22,15 +22,22 @@ class TableFolderItem(object):
         self.is_back_button = is_back_button
         self.file_data = file_data
         self.parent = parent
+        self.color = None
 
-    def color(self):
-        if self.file_data != None:
-            if not self.parent.CASCReader.is_file_fetchable(self.file_data[1],include_cdn=False):
-                # if it's NOT locally fetchable, then it needs to be fetched.
-                return QBrush(QColor(200, 200, 200))
+    def get_color(self,force_update=False):
+        if self.file_data == None:
+            return None
+        
+        if self.color != None and not force_update:
+            return self.color
 
-    # def __ge__(self, other):
-        # return not self.__lt__(other)
+        if not self.parent.CASCReader.is_file_fetchable(self.file_data[1],include_cdn=False):
+            # if it's NOT locally fetchable, then it needs to be fetched from cdn.
+            self.color = QBrush(QColor(200, 200, 200))
+        else:
+            self.color = QBrush(QColor(255, 255, 255))
+
+        return self.color
 
     def __lt__(self, other):
         if self.is_back_button:
@@ -69,7 +76,7 @@ class FileTableModel(QtCore.QAbstractTableModel):
         elif role == QtCore.Qt.ForegroundRole:
             row = index.row()
             if 0 <= row < self.rowCount():
-                return self._data[row].color()
+                return self._data[row].get_color()
 
 class FileTableWidget(QTableView):
     def __init__(self,parent):
@@ -263,7 +270,7 @@ class CascViewApp(QMainWindow):
     def keyReleaseEvent(self, e):
         QMainWindow.keyReleaseEvent(self, e)
         if e.key()==Qt.Key_Enter or e.key()==Qt.Key_Return:
-            self.on_dbl_click(-1,-1)
+            self.on_dbl_click(None)
 
     def on_right_click(self, QPos=None):
         parent=self.sender()
@@ -319,7 +326,7 @@ class CascViewApp(QMainWindow):
 
             if self.isCDN:
                 finfo = self.CASCReader.get_file_info_by_ckey(item.file_data[1])
-                self.infoTable.item(1,0).setText(f"Archive File: {finfo.data_file[:12]} {finfo.compressed_size}" if hasattr(finfo,"data_file") else "CDN File")
+                self.infoTable.item(1,0).setText(f"Archive File: {finfo.data_file[:12]} \n {finfo.compressed_size} bytes compressed" if hasattr(finfo,"data_file") else "CDN File")
                 # self.infoTable.item(1,0).setText(f"Archive File")
             else:
                 size = self.CASCReader.get_file_size_by_ckey(item.file_data[1])
@@ -339,7 +346,7 @@ class CascViewApp(QMainWindow):
                 self.infoTable.item(1,0).setText(f"Items: {len(curDir['files'])+len(curDir['folders'])}")
 
     def on_dbl_click(self, index):
-        #enter directory, do nothing if it's a file
+        #enter directory, preview if file
         item = self.fileTable.selectedIndexes()
         if len(item)<1:
             return
