@@ -19,5 +19,6 @@ setuptools.setup(
     ],
     install_requires=[
         "requests==2.21.0",
+        "salsa20==0.3.0"
     ]
  )
