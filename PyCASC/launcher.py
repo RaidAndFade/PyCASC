@@ -4,8 +4,19 @@ from io import BytesIO
 from PyCASC import CACHE_DURATION
 from PyCASC.utils.blizzutils import parse_config, parse_build_config, get_cdn_config, get_cdn_data, get_cached, have_cached, get_cdn_url
 
+memcache = {}
+
+def get_mem_cached(url,cache_dur=CACHE_DURATION):
+    if url in memcache:
+        return memcache[url]
+    else:
+        dat = get_cached(url,cache_dur)
+        memcache[url] = dat
+        return dat
+        
+
 def getProductCDNs(product):
-    return parse_config(get_cached(f"http://us.patch.battle.net:1119/{product}/cdns", cache_dur=3600*24))
+    return parse_config(get_mem_cached(f"http://us.patch.battle.net:1119/{product}/cdns", cache_dur=3600*24))
 def getProductVersions(product):
     return parse_config(get_cached(f"http://us.patch.battle.net:1119/{product}/versions", cache_dur=3600*24))
 def getProductBlobs(product):
@@ -15,12 +26,12 @@ def getProductInstallBlob(product):
 def getProductGameBlob(product):
     return get_cached(f"http://us.patch.battle.net:1119/{product}/blob/game", cache_dur=3600*24)
 
-def getProductCDNFile(product,file_hash,region="us",ftype="data",cache_dur=CACHE_DURATION,enc=None,max_size=-1,index=False):
+def getProductCDNFile(product,file_hash,region="us",ftype="data",cache_dur=CACHE_DURATION,enc=None,max_size=-1,index=False,offset=0,size=-1):
     cdnurl,cdnpath = getCDN(product,region)
     if ftype == "config":
         d = get_cdn_config(cdnurl,cdnpath,file_hash,parse=False,cache_dur=cache_dur,max_size=max_size, index=index)
     else:
-        d = get_cdn_data(cdnurl,cdnpath,file_hash,cache_dur=cache_dur,max_size=max_size, index=index)
+        d = get_cdn_data(cdnurl,cdnpath,file_hash,cache_dur=cache_dur,max_size=max_size, index=index, offset=offset, size=size)
     return d
 
 def isCDNFileCached(product,file_hash,region="us",ftype="data",cache_dur=CACHE_DURATION,enc=None,max_size=-1,index=False):
