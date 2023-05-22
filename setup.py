@@ -18,7 +18,7 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     install_requires=[
-        "requests==2.21.0",
+        "requests==2.31.0",
         "salsa20==0.3.0"
     ]
  )
